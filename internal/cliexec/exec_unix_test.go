@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // swapInterruptChan makes the guard listen on ch instead of real OS signals,
@@ -57,11 +59,11 @@ func TestCommandDetachesSession(t *testing.T) {
 		_ = cmd.Wait()
 	}()
 
-	childSid, err := syscall.Getsid(cmd.Process.Pid)
+	childSid, err := unix.Getsid(cmd.Process.Pid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mySid, err := syscall.Getsid(0)
+	mySid, err := unix.Getsid(0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +117,20 @@ func TestGuardKillsProcessGroup(t *testing.T) {
 		t.Fatalf("could not parse group pid from child stdout %q: %v", out, err)
 	}
 	// SIGKILL reaped the leader and the backgrounded grandchild; group is gone.
-	if e := syscall.Kill(-pgid, 0); !errors.Is(e, syscall.ESRCH) {
-		t.Errorf("process group %d still present after interrupt (kill probe: %v)", pgid, e)
+	// Poll rather than probe once: the grandchild is reparented to PID 1 when
+	// sh dies and lingers as a zombie — still a group member — until init
+	// reaps it, which Capture's return does not happen-before.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		e := syscall.Kill(-pgid, 0)
+		if errors.Is(e, syscall.ESRCH) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("process group %d still present after interrupt (kill probe: %v)", pgid, e)
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
