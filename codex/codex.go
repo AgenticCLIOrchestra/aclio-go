@@ -1,8 +1,10 @@
-// Package codex drives the Codex CLI (`codex exec`) as a subprocess. Like the
-// claude package it runs the CLI detached in its own session with a ctrl+c
-// guard (via internal/cliexec), parses the CLI's JSONL event stream, and
-// supports schema-constrained structured output — but against Codex's flags
-// and event shapes rather than Claude Code's.
+// Package codex drives the Codex CLI (`codex exec`) as a subprocess: live
+// parsing of the CLI's JSONL event stream with opt-in [codex]-prefixed event
+// and usage logging, structured output backed by a JSON schema, session
+// resume, and (via internal/cliexec) a ctrl+c guard that keeps the terminal
+// responsive while the CLI runs detached in its own session. Like the claude
+// package, but against Codex's flags and event shapes rather than Claude
+// Code's.
 package codex
 
 import (

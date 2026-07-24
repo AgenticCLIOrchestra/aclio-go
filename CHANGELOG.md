@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-07-25
+
+### Changed
+- `codex` package doc now packs the feature list into its first sentence — live JSONL event-stream parsing with opt-in `[codex]` event/usage logging, schema-backed structured output, session resume, detached-session ctrl+c guard — so pkg.go.dev's synopsis (first sentence only) shows the full picture, aligning it with the `claude` package's doc
+
 ## [0.1.2] - 2026-07-25
 
 ### Fixed
@@ -36,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.1.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AgenticCLIOrchestra/aclio-go/releases/tag/v0.1.0
