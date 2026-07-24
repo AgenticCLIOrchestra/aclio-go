@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-07-25
+
+### Fixed
+- `internal/cliexec` tests failed to build on Linux: `syscall.Getsid` is only defined on darwin in the stdlib, so the session-detachment test now uses `golang.org/x/sys/unix.Getsid` (available on all unix platforms); `golang.org/x/sys` is promoted to a direct dependency
+- Flaky `TestGuardKillsProcessGroup` on Linux: the group-liveness probe ran before PID 1 reaped the SIGKILLed grandchild (a zombie still counts as a group member), so the probe now polls until the group is gone or a deadline passes
+
 ## [0.1.1] - 2026-07-25
 
 ### Added
@@ -30,5 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.1.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AgenticCLIOrchestra/aclio-go/releases/tag/v0.1.0
