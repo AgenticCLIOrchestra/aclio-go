@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-07-25
+
+### Added
+- MIT `LICENSE` file (copyright AgenticCLIOrchestra), so the module is recognized as redistributable and pkg.go.dev can display documentation
+
 ## [0.1.0] - 2026-07-08
 
 ### Added
@@ -25,4 +30,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.1.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AgenticCLIOrchestra/aclio-go/releases/tag/v0.1.0
