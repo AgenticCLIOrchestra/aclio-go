@@ -1,0 +1,345 @@
+name: Push ~ post merge phase
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  check-pr-labels:
+    name: Check PR Labels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      skip_publish: ${{ steps.check_labels.outputs.skip_publish }}
+    steps:
+      - name: Get PR number and check labels
+        id: check_labels
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Find PR associated with this commit
+            const commit_sha = context.sha;
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: commit_sha
+            });
+            
+            let skipPublish = false;
+            
+            if (prs.length > 0) {
+              const pr = prs[0];
+              console.log(`Found PR #${pr.number} associated with commit ${commit_sha}`);
+            
+              // Check if PR has "skip publish" label
+              const hasSkipPublishLabel = pr.labels.some(label => label.name === 'skip publish');
+            
+              if (hasSkipPublishLabel) {
+                console.log('PR has "skip publish" label - publishing will be skipped');
+                skipPublish = true;
+              } else {
+                console.log('PR does not have "skip publish" label - proceeding with publish');
+              }
+            } else {
+              console.log('No PR found for this commit - proceeding with publish');
+            }
+            
+            core.setOutput('skip_publish', skipPublish);
+
+  create-git-tag:
+    name: Create and push Git tag
+    runs-on: ubuntu-latest
+    needs: check-pr-labels
+    if: ${{ needs.check-pr-labels.outputs.skip_publish != 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Git tag to be created: v${VERSION}"
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Create and push Git tag
+        run: |
+          TAG_NAME="v${{ steps.version.outputs.VERSION }}"
+
+          # Check if tag already exists
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists. Skipping tag creation."
+            echo "### Git Tag Already Exists ⚠️" >> $GITHUB_STEP_SUMMARY
+            echo "Tag \`$TAG_NAME\` already exists for this version." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Creating tag $TAG_NAME for commit ${{ github.sha }}"
+            git tag -a "$TAG_NAME" -m "Release version ${{ steps.version.outputs.VERSION }}"
+            git push origin "$TAG_NAME"
+            echo "Successfully created and pushed tag: $TAG_NAME"
+
+            echo "### Git Tag Created Successfully ✅" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Tag:** \`$TAG_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Version:** ${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  extract-changelog:
+    name: Extract and display changelog entry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changelog_text: ${{ steps.output.outputs.changelog_text }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Extracting changelog for version: ${VERSION}"
+
+      - name: Extract changelog entry for current version
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          echo "Extracting changelog entry for version $VERSION from CHANGELOG.md..."
+
+          if ! grep -qF "## [$VERSION]" CHANGELOG.md; then
+            echo "⚠️ Warning: CHANGELOG.md does not contain an entry for version $VERSION" >> $GITHUB_STEP_SUMMARY
+            : > /tmp/changelog_content.txt
+            exit 0
+          fi
+
+          # Extract from the "## [VERSION]" heading up to (but not including)
+          # the next "## [" heading or the first "[name]:" link-definition line,
+          # then append the matching "[VERSION]: <url>" compare-link from the bottom.
+          awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { in_section = 1; body[++n] = $0; next }
+            in_section && index($0, "## [") == 1 { in_section = 0 }
+            in_section && /^\[[^]]+\]:/ { in_section = 0 }
+            in_section { body[++n] = $0 }
+            index($0, "[" ver "]:") == 1 { link = $0 }
+            END {
+              while (n > 0 && body[n] == "") n--
+              for (i = 1; i <= n; i++) print body[i]
+              if (link) { print ""; print link }
+            }
+          ' CHANGELOG.md > /tmp/changelog_content.txt
+
+          echo "Changelog content extracted:"
+          cat /tmp/changelog_content.txt
+
+      - name: Create changelog summary
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          echo "## 📋 Release Notes for v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -s /tmp/changelog_content.txt ]; then
+            cat /tmp/changelog_content.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No changelog entry found for version ${VERSION}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Output changelog for other jobs
+        id: output
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          if [ -s /tmp/changelog_content.txt ]; then
+            CHANGELOG_TEXT=$(cat /tmp/changelog_content.txt)
+            echo "changelog_text<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGELOG_TEXT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog_text=No changelog entry found for version ${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [ check-pr-labels, create-git-tag, extract-changelog ]
+    if: ${{ needs.check-pr-labels.outputs.skip_publish != 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Creating GitHub release for version: ${VERSION}"
+
+      - name: Create Release Body
+        id: release_body
+        env:
+          CHANGELOG: ${{ needs.extract-changelog.outputs.changelog_text }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # The Go module path is all-lowercase (see go.mod); github.repository
+          # carries the canonical repo casing, so lowercase it.
+          GO_MODULE=$(printf '%s' "github.com/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+          # Create the release body with Go module information and changelog
+          cat << EOF > release_body.md
+          ## Installation
+
+          \`\`\`bash
+          go get ${GO_MODULE}@v${VERSION}
+          \`\`\`
+
+          ## Changelog
+
+          ${CHANGELOG}
+
+          ## Build Information
+
+          - **Commit:** ${{ github.sha }}
+          - **Build Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+
+          echo "Release body created"
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.version.outputs.VERSION }}
+          name: Release v${{ steps.version.outputs.VERSION }}
+          bodyFile: release_body.md
+          draft: false
+          prerelease: false
+          makeLatest: true
+          generateReleaseNotes: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          echo "### 🎉 GitHub Release Created Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/v${VERSION})" >> $GITHUB_STEP_SUMMARY
+
+  trigger-go-proxy:
+    name: Trigger Go Proxy Update
+    runs-on: ubuntu-latest
+    needs: [ check-pr-labels, create-git-tag ]
+    if: ${{ needs.check-pr-labels.outputs.skip_publish != 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Will trigger Go proxy for version: v${VERSION}"
+
+      - name: Trigger Go proxy to fetch new version
+        id: trigger_proxy
+        run: |
+          VERSION="v${{ steps.version.outputs.VERSION }}"
+
+          # The Go module path is all-lowercase (see go.mod); github.repository
+          # carries the canonical repo casing, so lowercase it.
+          GO_MODULE=$(printf '%s' "github.com/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          URL="https://proxy.golang.org/${GO_MODULE}/@v/${VERSION}.info"
+
+          echo "Triggering Go proxy to fetch version ${VERSION}..."
+          echo "Request URL: ${URL}"
+          echo ""
+
+          # Make the GET request and capture response
+          HTTP_STATUS=$(curl -s -o /tmp/response.txt -w "%{http_code}" "${URL}")
+
+          echo "HTTP Status Code: ${HTTP_STATUS}"
+          echo "Response content:"
+          cat /tmp/response.txt
+          echo ""
+
+          # Check if status is 200
+          if [ "${HTTP_STATUS}" -eq 200 ]; then
+            echo "✅ Success: Go proxy successfully fetched version ${VERSION}"
+
+            # Parse the JSON response if it's valid
+            if command -v jq >/dev/null 2>&1; then
+              if jq -e . /tmp/response.txt >/dev/null 2>&1; then
+                echo ""
+                echo "Version info from proxy:"
+                jq . /tmp/response.txt
+              fi
+            fi
+
+            echo "### Go Proxy Update Triggered Successfully ✅" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Module:** \`${GO_MODULE}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Version:** \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The module is now available at:" >> $GITHUB_STEP_SUMMARY
+            echo "- [pkg.go.dev](https://pkg.go.dev/${GO_MODULE}@${VERSION})" >> $GITHUB_STEP_SUMMARY
+            echo "- [Go Proxy](${URL})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Error: Failed to trigger Go proxy update"
+            echo "Expected HTTP status 200, got ${HTTP_STATUS}"
+
+            echo "### Go Proxy Update Failed ❌" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**HTTP Status:** ${HTTP_STATUS}" >> $GITHUB_STEP_SUMMARY
+            echo "**Version:** ${VERSION}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The Go proxy could not fetch the new version. This might happen if:" >> $GITHUB_STEP_SUMMARY
+            echo "- The repository is private" >> $GITHUB_STEP_SUMMARY
+            echo "- The git tag hasn't propagated yet" >> $GITHUB_STEP_SUMMARY
+            echo "- There's an issue with the module path" >> $GITHUB_STEP_SUMMARY
+
+            # Exit with failure
+            exit 1
+          fi
+
+      - name: Verify module availability
+        run: |
+          VERSION="v${{ steps.version.outputs.VERSION }}"
+          GO_MODULE=$(printf '%s' "github.com/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          MODULE="${GO_MODULE}@${VERSION}"
+
+          echo "Verifying module availability..."
+          echo "Checking: ${MODULE}"
+
+          # Additional verification using go list (if Go is available)
+          if command -v go >/dev/null 2>&1; then
+            echo ""
+            echo "Attempting to verify with go list..."
+            if go list -m "${MODULE}" 2>/dev/null; then
+              echo "✅ Module is available via go toolchain"
+            else
+              echo "⚠️  Module not yet available via go toolchain (may take a few minutes to propagate)"
+            fi
+          fi

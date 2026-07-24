@@ -1,0 +1,212 @@
+name: Pull request ~ status check ~ changelog
+
+on:
+  pull_request:
+    branches: [ "master" ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+
+jobs:
+  validate-changelog:
+    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && !contains(github.event.pull_request.labels.*.name, 'skip publish')}}
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Check VERSION has no trailing newline
+        run: |
+          FILE="VERSION"
+          echo "Checking that $FILE does not end with a newline..."
+
+          if [ "$(tail -c 1 "$FILE" | wc -l)" -ne 0 ]; then
+            echo "❌ $FILE ends with a newline"
+            echo "Remove the trailing newline so the embedded Version string does not include it."
+            exit 1
+          fi
+
+          echo "✅ $FILE has no trailing newline"
+
+      - name: Verify bracketed references have link definitions
+        run: |
+          FILE="CHANGELOG.md"
+          echo "Checking that every [reference] in $FILE has a matching [reference]: link definition..."
+
+          # Collect defined link labels: lines like "[label]: https://..."
+          grep -oE '^\[[^]]+\]:' "$FILE" | sed 's/:$//' | sort -u > /tmp/changelog-defs.txt
+
+          # Collect used link references:
+          #   - strip inline code spans `…` so bracketed expressions inside
+          #     code (e.g. Go map indices like `m["key"]`) don't count
+          #   - strip inline links of the form [text](url) so they don't count
+          #   - drop the definition lines themselves
+          #   - extract remaining [name] occurrences
+          sed -E 's/`[^`]*`//g' "$FILE" \
+            | sed -E 's/\[([^]]+)\]\([^)]*\)//g' \
+            | grep -vE '^\[[^]]+\]:' \
+            | grep -oE '\[[^]]+\]' \
+            | sort -u > /tmp/changelog-refs.txt
+
+          missing=$(comm -23 /tmp/changelog-refs.txt /tmp/changelog-defs.txt)
+
+          if [ -n "$missing" ]; then
+            echo "❌ The following bracketed references have no matching link definition at the bottom of the file:"
+            echo "$missing" | sed 's/^/  - /'
+            echo ""
+            echo "Add a definition for each, e.g.:"
+            echo "  [0.1.0]: https://github.com/${{ github.repository }}/releases/tag/v0.1.0"
+            exit 1
+          fi
+
+          echo "✅ All bracketed references have link definitions"
+
+      - name: Check semantic versioning
+        run: |
+          PR_VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "Validating semantic versioning for $PR_VERSION..."
+
+          # Function to validate semver format
+          validate_semver() {
+            if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+              return 0
+            else
+              return 1
+            fi
+          }
+
+          if ! validate_semver "$PR_VERSION"; then
+            echo "❌ Version $PR_VERSION does not follow semantic versioning"
+            echo "Please use format: MAJOR.MINOR.PATCH (e.g., 1.2.3)"
+            echo "Optional: pre-release and build metadata (e.g., 1.2.3-beta.1+build.123)"
+            exit 1
+          fi
+
+          echo "✅ Version $PR_VERSION follows semantic versioning"
+
+      - name: Verify changelog entry for new version
+        run: |
+          PR_VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "Checking if CHANGELOG.md contains entry for version $PR_VERSION..."
+
+          # Check if the new version exists in the changelog
+          if ! grep -qF "## [$PR_VERSION]" CHANGELOG.md; then
+            echo "❌ CHANGELOG.md does not contain an entry for version $PR_VERSION"
+            echo "Please add a changelog entry for the new version"
+            echo ""
+            echo "Expected format:"
+            echo "## [$PR_VERSION] - $(date +%Y-%m-%d)"
+            echo ""
+            echo "### Added"
+            echo "- New features"
+            echo ""
+            echo "### Changed"
+            echo "- Changes in existing functionality"
+            echo ""
+            echo "### Fixed"
+            echo "- Bug fixes"
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ CHANGELOG.md contains entry for version $PR_VERSION"
+
+          # Additional check: ensure the changelog entry has content
+          echo "Checking if the changelog entry has content..."
+
+          # Extract the section for this version
+          awk "/## \[$PR_VERSION\]/,/## \[/" CHANGELOG.md > /tmp/version_section.txt
+
+          # Check if there's at least one section heading (Added, Changed, Deprecated, Removed, Fixed, Security)
+          if ! grep -qE "^### (Added|Changed|Deprecated|Removed|Fixed|Security)" /tmp/version_section.txt; then
+            echo "⚠️  Warning: Version $PR_VERSION entry appears to have no content sections"
+            echo "Consider adding at least one section (Added, Changed, Fixed, etc.) with relevant changes"
+          else
+            echo "✅ Version $PR_VERSION entry has content"
+          fi
+
+      - name: Fetch master branch
+        run: git fetch origin master:master
+
+      - name: Check version bump
+        run: |
+          echo "Checking if VERSION has been bumped..."
+
+          # Get version from master branch
+          MASTER_VERSION=$(git show master:VERSION | tr -d '[:space:]')
+          echo "Version on master: $MASTER_VERSION"
+
+          # Get version from PR branch
+          PR_VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "Version in PR: $PR_VERSION"
+
+          # Compare versions: PR_VERSION must be strictly greater than MASTER_VERSION
+          if [ "$MASTER_VERSION" = "$PR_VERSION" ]; then
+            echo "❌ Version has not been bumped!"
+            echo "Current version on master: $MASTER_VERSION"
+            echo "Please update the VERSION file with a new version number"
+            exit 1
+          fi
+
+          HIGHEST=$(printf '%s\n%s\n' "$MASTER_VERSION" "$PR_VERSION" | sort -V | tail -n1)
+          if [ "$HIGHEST" != "$PR_VERSION" ]; then
+            echo "❌ PR version ($PR_VERSION) is lower than master version ($MASTER_VERSION)"
+            echo "Please bump the VERSION file to a value greater than $MASTER_VERSION"
+            exit 1
+          fi
+
+          echo "✅ Version has been bumped from $MASTER_VERSION to $PR_VERSION"
+
+          # Store PR version for the summary step
+          echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install changelog validator
+        run: |
+          # Install Node.js tool for Keep a Changelog validation
+          npm install -g keep-a-changelog@2.8.0
+
+      - name: Validate changelog format
+        run: |
+          echo "Validating CHANGELOG.md format according to Keep a Changelog..."
+
+          # Use keep-a-changelog to validate the changelog format
+          if ! npx keep-a-changelog@2.8.0 CHANGELOG.md > /dev/null 2>&1; then
+            echo "❌ CHANGELOG.md is not valid according to Keep a Changelog format"
+            echo "Please ensure your changelog follows the format at https://keepachangelog.com"
+            echo "Validation output:"
+            npx keep-a-changelog@2.8.0 CHANGELOG.md
+            exit 1
+          fi
+
+          echo "✅ CHANGELOG.md format is valid"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## ✅ All changelog checks passed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ VERSION has no trailing newline" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ All bracketed references have link definitions" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Version follows semantic versioning" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ CHANGELOG.md contains entry for version $PR_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Version has been bumped to $PR_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ CHANGELOG.md format is valid (Keep a Changelog)" >> $GITHUB_STEP_SUMMARY
+
+  status-check-stage-verify-changelog:
+    name: status-check-stage-verify-changelog
+    if: ${{ !cancelled() }}
+    needs:
+      - validate-changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          allowed-skips: ${{ toJSON(needs) }}
+          jobs: ${{ toJSON(needs) }}
