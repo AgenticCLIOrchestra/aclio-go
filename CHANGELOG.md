@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-27
+
+### Added
+- Failed `claude`/`codex` calls now dump their error to `{stamp}-{name}-error.txt` (arg-validation and run failures alike), so a call that produced no output still leaves a trace
+
+### Changed
+- Debug dumps (`RunOpts.TempDir`) are now timestamp-prefixed — `{stamp}-{name}-{kind}` with one millisecond-precise stamp per call — so repeated calls with the same name never overwrite each other and `ls` lists them chronologically; the codex `--output-schema` file follows the same naming
+- The debug/TempDir directory is created lazily on first write instead of dumps being silently dropped when it doesn't exist
+- The prompt is blanked in the dumped `settings.json` — it's already saved separately as `{stamp}-{name}-prompt.md`
+
 ## [0.1.3] - 2026-07-25
 
 ### Changed
@@ -41,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.2.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.0...v0.1.1

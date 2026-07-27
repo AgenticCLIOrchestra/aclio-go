@@ -45,9 +45,12 @@ type RunOpts struct {
 	SystemPromptFile string `json:"system_prompt_file"`
 	Stream           bool   `json:"stream"`
 	ResumeSessionID  string `json:"resume_session_id"`
-	// TempDir, when set, is a directory the call's settings, prompt, and output
-	// are dumped into for debugging. Excluded from the dumped settings JSON.
-	// Empty disables the dumps.
+	// TempDir, when set, is a directory (created if needed) the call's
+	// settings, prompt, output, and error are dumped into for debugging, as
+	// {stamp}-{name}-{kind} with one millisecond-precise stamp per call, so
+	// repeated calls never overwrite each other and ls lists them
+	// chronologically. Excluded from the dumped settings JSON. Empty disables
+	// the dumps.
 	TempDir string `json:"-"`
 }
 
@@ -59,13 +62,16 @@ type RunOpts struct {
 // and returns an error wrapping ErrInterrupted rather than exiting the process;
 // branch on it with errors.Is(err, claude.ErrInterrupted).
 func Run(absDir string, opts RunOpts) (string, error) {
+	stamp := cliexec.DebugStamp()
+
 	args, err := buildArgs(opts)
 	if err != nil {
+		debugError(opts.TempDir, stamp, opts.Name, err)
 		return "", err
 	}
 
-	debugSettings(opts.TempDir, opts)
-	debugPrompt(opts.TempDir, opts.Name, opts.Prompt)
+	debugSettings(opts.TempDir, stamp, opts)
+	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
 	cmd := cliexec.Command(absDir, "claude", args)
 	// The prompt travels via stdin, not as a `-p` argument: a single argv
@@ -84,7 +90,10 @@ func Run(absDir string, opts RunOpts) (string, error) {
 	}
 
 	logCacheMetrics(opts.Name, out, err)
-	debugOut(opts.TempDir, opts.Name, out)
+	if out != "" {
+		debugOut(opts.TempDir, stamp, opts.Name, out)
+	}
+	debugError(opts.TempDir, stamp, opts.Name, err)
 
 	return out, err
 }
