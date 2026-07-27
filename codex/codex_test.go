@@ -87,4 +87,3 @@ func TestParseStructured(t *testing.T) {
 		t.Error("accepted non-JSON final text")
 	}
 }
-

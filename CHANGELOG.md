@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-27
+
+### Added
+- `[claude] [start]` / `[codex] [start]` log line announcing each spawn — `op=... model=... prompt_chars=...` — pairing with the `[claude] [cache]` / `[codex] [usage]` completion line via the shared op name; the prompt size is an early tell for runaway payload growth. Emitted after arg validation (a start line means a process actually launched), through the shared `LogWriter` like every other line
+
 ## [0.2.0] - 2026-07-27
 
 ### Added
@@ -14,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Debug dumps (`RunOpts.TempDir`) are now timestamp-prefixed — `{stamp}-{name}-{kind}` with one millisecond-precise stamp per call — so repeated calls with the same name never overwrite each other and `ls` lists them chronologically; the codex `--output-schema` file follows the same naming
 - The debug/TempDir directory is created lazily on first write instead of dumps being silently dropped when it doesn't exist
 - The prompt is blanked in the dumped `settings.json` — it's already saved separately as `{stamp}-{name}-prompt.md`
+- `RunOpts.Name` is normalised for dump filenames instead of used raw — lowercased, anything outside `[a-z0-9_-]` mapped to `-`, empty names become `unnamed`; codex's schema-file `sanitize` is folded into this shared rule
 
 ## [0.1.3] - 2026-07-25
 
@@ -51,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.3.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.1...v0.1.2

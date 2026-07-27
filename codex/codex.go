@@ -91,6 +91,7 @@ func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
 		return "", nil, err
 	}
 
+	logStart(opts)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
@@ -182,6 +183,24 @@ func writeSchemaFile(opts RunOpts, stamp string) (path string, cleanup func(), e
 		return path, func() { _ = os.RemoveAll(dir) }, nil
 	}
 	return path, func() {}, nil
+}
+
+// logStart writes one greppable [codex] [start] line per call, announcing
+// the spawn. It pairs with the [codex] [usage] completion line via the shared
+// op name; the prompt size is an early tell for runaway payload growth.
+// Emitted only after schema and arg validation, so a start line means a
+// process was actually launched. An unset model logs as "default" — Codex
+// runs on its configured default.
+func logStart(opts RunOpts) {
+	op := opts.Name
+	if op == "" {
+		op = "unnamed"
+	}
+	model := opts.Model
+	if model == "" {
+		model = "default"
+	}
+	cliexec.Logf("[codex] [start] op=%s model=%s prompt_chars=%d", op, model, len(opts.Prompt))
 }
 
 // logUsage writes one greppable [codex] [usage] line per call.
