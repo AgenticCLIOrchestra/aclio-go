@@ -70,6 +70,7 @@ func Run(absDir string, opts RunOpts) (string, error) {
 		return "", err
 	}
 
+	logStart(opts)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
@@ -138,6 +139,19 @@ func buildArgs(opts RunOpts) ([]string, error) {
 	}
 
 	return args, nil
+}
+
+// logStart writes one greppable [claude] [start] line per call, announcing
+// the spawn. It pairs with the [claude] [cache] completion line via the
+// shared op name; the prompt size is an early tell for runaway payload
+// growth. Emitted only after arg validation, so a start line means a process
+// was actually launched.
+func logStart(opts RunOpts) {
+	op := opts.Name
+	if op == "" {
+		op = "unnamed"
+	}
+	cliexec.Logf("[claude] [start] op=%s model=%s prompt_chars=%d", op, opts.ModelID, len(opts.Prompt))
 }
 
 // logCacheMetrics writes one greppable [claude] [cache] line per call.

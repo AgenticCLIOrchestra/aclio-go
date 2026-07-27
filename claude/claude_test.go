@@ -1,6 +1,9 @@
 package claude
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIsValidModel(t *testing.T) {
 	valid := []Model{
@@ -117,5 +120,25 @@ func TestRunRejectsInvalidInputs(t *testing.T) {
 	}
 	if _, err := Run(t.TempDir(), RunOpts{Prompt: "hi", ModelID: Sonnet, AllowedTools: []string{"--bad"}}); err == nil {
 		t.Error("Run accepted an invalid allowed tool")
+	}
+}
+
+// TestLogStart — one greppable [claude] [start] line per call, carrying the
+// op name (pairing with the [claude] [cache] completion line), model, and
+// prompt size.
+func TestLogStart(t *testing.T) {
+	got := captureLog(t, func() {
+		logStart(RunOpts{Name: "triage", ModelID: Sonnet, Prompt: "12345"})
+	})
+	want := "[claude] [start] op=triage model=" + string(Sonnet) + " prompt_chars=5\n"
+	if got != want {
+		t.Errorf("logStart wrote %q, want %q", got, want)
+	}
+
+	got = captureLog(t, func() {
+		logStart(RunOpts{ModelID: Sonnet})
+	})
+	if !strings.Contains(got, "op=unnamed") {
+		t.Errorf("blank name should log as op=unnamed, got %q", got)
 	}
 }
