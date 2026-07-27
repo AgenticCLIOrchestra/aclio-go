@@ -60,9 +60,12 @@ type RunOpts struct {
 	// Stream, when true, logs each JSONL event live as a [codex] line. Events
 	// are parsed either way; this only controls log verbosity.
 	Stream bool `json:"stream"`
-	// TempDir, when set, is a directory the call's settings, prompt, and output
-	// are dumped into for debugging, and where the output-schema file is
-	// written. Empty uses an OS temp dir for the schema and disables dumps.
+	// TempDir, when set, is a directory (created if needed) the call's
+	// settings, prompt, output, and error are dumped into for debugging, as
+	// {stamp}-{name}-{kind} with one millisecond-precise stamp per call, so
+	// repeated calls never overwrite each other and ls lists them
+	// chronologically. The output-schema file is written there too. Empty uses
+	// an OS temp dir for the schema and disables dumps.
 	TempDir string `json:"-"`
 }
 
@@ -73,19 +76,23 @@ type RunOpts struct {
 // and returns an error wrapping ErrInterrupted rather than exiting the process;
 // branch on it with errors.Is(err, codex.ErrInterrupted).
 func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
-	schemaPath, cleanup, err := writeSchemaFile(opts)
+	stamp := cliexec.DebugStamp()
+
+	schemaPath, cleanup, err := writeSchemaFile(opts, stamp)
 	if err != nil {
+		debugError(opts.TempDir, stamp, opts.Name, err)
 		return "", nil, err
 	}
 	defer cleanup()
 
 	args, err := buildArgs(opts, schemaPath)
 	if err != nil {
+		debugError(opts.TempDir, stamp, opts.Name, err)
 		return "", nil, err
 	}
 
-	debugSettings(opts.TempDir, opts)
-	debugPrompt(opts.TempDir, opts.Name, opts.Prompt)
+	debugSettings(opts.TempDir, stamp, opts)
+	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
 	cmd := cliexec.Command(absDir, "codex", args)
 	// The prompt travels via stdin, not as a positional argument: a single
@@ -97,11 +104,12 @@ func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
 
 	result, err := runStream(cmd, opts.Stream)
 	if err != nil {
+		debugError(opts.TempDir, stamp, opts.Name, err)
 		return "", nil, err
 	}
 
 	logUsage(opts.Name, result)
-	cliexec.DebugString(opts.TempDir, opts.Name+"-output.txt", result.FinalText)
+	cliexec.DebugString(opts.TempDir, stamp+"-"+opts.Name+"-output.txt", result.FinalText)
 
 	return result.FinalText, result, nil
 }
@@ -145,9 +153,10 @@ func buildArgs(opts RunOpts, schemaPath string) ([]string, error) {
 }
 
 // writeSchemaFile materialises opts.OutputSchema to a file for --output-schema
-// (Codex takes a path, not an inline schema). Returns an empty path and a
-// no-op cleanup when no schema is set.
-func writeSchemaFile(opts RunOpts) (path string, cleanup func(), err error) {
+// (Codex takes a path, not an inline schema), stamp-prefixed like the debug
+// dumps so repeated calls into the same TempDir don't overwrite each other.
+// Returns an empty path and a no-op cleanup when no schema is set.
+func writeSchemaFile(opts RunOpts, stamp string) (path string, cleanup func(), err error) {
 	if opts.OutputSchema == "" {
 		return "", func() {}, nil
 	}
@@ -159,8 +168,10 @@ func writeSchemaFile(opts RunOpts) (path string, cleanup func(), err error) {
 			return "", func() {}, fmt.Errorf("creating schema temp dir: %w", err)
 		}
 		ephemeral = true
+	} else if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", func() {}, fmt.Errorf("creating schema dir: %w", err)
 	}
-	path = filepath.Join(dir, sanitize(opts.Name)+"-schema.json")
+	path = filepath.Join(dir, stamp+"-"+cliexec.DebugName(opts.Name)+"-schema.json")
 	if err := os.WriteFile(path, []byte(opts.OutputSchema), 0644); err != nil {
 		if ephemeral {
 			_ = os.RemoveAll(dir)
@@ -171,20 +182,6 @@ func writeSchemaFile(opts RunOpts) (path string, cleanup func(), err error) {
 		return path, func() { _ = os.RemoveAll(dir) }, nil
 	}
 	return path, func() {}, nil
-}
-
-func sanitize(name string) string {
-	if name == "" {
-		return "codex"
-	}
-	return strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
-			return r
-		default:
-			return '-'
-		}
-	}, name)
 }
 
 // logUsage writes one greppable [codex] [usage] line per call.

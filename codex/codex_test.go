@@ -88,16 +88,3 @@ func TestParseStructured(t *testing.T) {
 	}
 }
 
-func TestSanitize(t *testing.T) {
-	cases := map[string]string{
-		"":            "codex",
-		"interaction": "interaction",
-		"my op/name!": "my-op-name-",
-		"weird\tname": "weird-name",
-	}
-	for in, want := range cases {
-		if got := sanitize(in); got != want {
-			t.Errorf("sanitize(%q) = %q, want %q", in, got, want)
-		}
-	}
-}

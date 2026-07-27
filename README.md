@@ -93,7 +93,7 @@ triage, result, err := claude.RunStructured[Triage]("/abs/workdir", claude.RunOp
 
 `RunStructured` generates the schema from `Triage` (unless `RunOpts.JsonSchema` is set — do that when the schema can't be derived from the type, e.g. discriminated unions behind interface fields), passes it via `--json-schema`, and decodes `structured_output` into the struct. Already holding a result blob? `claude.ParseStructured[Triage](out)` is the decode half on its own.
 
-Set `RunOpts.TempDir` to dump each call's settings/prompt/output for debugging.
+Set `RunOpts.TempDir` to dump each call's settings/prompt/output/error for debugging — files are named `{stamp}-{name}-{kind}` with one millisecond-precise stamp per call, so repeated calls never overwrite each other and `ls` lists them chronologically.
 
 #### Stream output
 
