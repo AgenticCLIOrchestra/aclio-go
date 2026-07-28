@@ -61,7 +61,7 @@ triage, res, err := aclio.RunStructured[Triage](aclio.Request{
 })
 ```
 
-The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once.
+The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools` / `DisallowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once.
 
 When you need full control, drop to the provider package directly — the root layer is a thin router over them, not a wall.
 
@@ -69,12 +69,13 @@ When you need full control, drop to the provider package directly — the root l
 
 ```go
 out, err := claude.Run("/abs/workdir", claude.RunOpts{
-    Name:         "triage",           // label for the [claude] [cache] log line
-    Prompt:       "Summarize the open TODOs in this repo.",
-    ModelID:      claude.Sonnet,      // alias, or a pinned ID like claude.Opus48
-    AllowedTools: []string{"Read", "Grep", "Bash(git log:*)"},
-    MaxTurns:     10,
-    Stream:       true,               // stream-json + live [claude] event logging
+    Name:            "triage",                                 // label for the [claude] [cache] log line
+    Prompt:          "Summarize the open TODOs in this repo.", // fed via stdin, so size is a non-issue
+    ModelID:         claude.Sonnet,                            // alias, or a pinned ID like claude.Opus48
+    AllowedTools:    []string{"Read", "Grep", "Bash(git log:*)"}, // repeated --allowedTools flags
+    DisallowedTools: []string{"Bash(git log)"},                // deny rules beat allow rules
+    MaxTurns:        10,                                       // 0 = the CLI's default, unlimited
+    Stream:          true,                                     // stream-json + live [claude] event logging
 })
 if err != nil {
     log.Fatal(err)

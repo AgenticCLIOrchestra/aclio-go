@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-28
+
+### Added
+- `claude.RunOpts.DisallowedTools` — repeated `--disallowedTools` flags with the same shape validation as `AllowedTools`, carried through the agnostic layer via `Request.ClaudeOpts`. The CLI evaluates deny rules before allow rules, and an exact-match rule (no wildcard) matches only that literal command — so denying `Bash(git fetch)` blocks the bare command while an allow rule `Bash(git fetch:*)` still permits argument-carrying invocations
+
 ## [0.3.0] - 2026-07-27
 
 ### Added
@@ -57,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.4.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.1.2...v0.1.3

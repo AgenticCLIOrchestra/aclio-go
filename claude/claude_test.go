@@ -121,6 +121,29 @@ func TestRunRejectsInvalidInputs(t *testing.T) {
 	if _, err := Run(t.TempDir(), RunOpts{Prompt: "hi", ModelID: Sonnet, AllowedTools: []string{"--bad"}}); err == nil {
 		t.Error("Run accepted an invalid allowed tool")
 	}
+	if _, err := Run(t.TempDir(), RunOpts{Prompt: "hi", ModelID: Sonnet, DisallowedTools: []string{"--bad"}}); err == nil {
+		t.Error("Run accepted an invalid disallowed tool")
+	}
+}
+
+// TestBuildArgsDisallowedTools — deny rules ride the same validation as allow
+// rules and land as repeated --disallowedTools flags, after the allow flags.
+func TestBuildArgsDisallowedTools(t *testing.T) {
+	args, err := buildArgs(RunOpts{
+		ModelID:         Sonnet,
+		AllowedTools:    []string{"Bash(git fetch:*)"},
+		DisallowedTools: []string{"Bash(git fetch)"},
+	})
+	if err != nil {
+		t.Fatalf("buildArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--allowedTools Bash(git fetch:*)") {
+		t.Errorf("allow flag missing from args: %q", joined)
+	}
+	if !strings.Contains(joined, "--disallowedTools Bash(git fetch)") {
+		t.Errorf("deny flag missing from args: %q", joined)
+	}
 }
 
 // TestLogStart — one greppable [claude] [start] line per call, carrying the
