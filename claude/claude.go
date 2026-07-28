@@ -30,27 +30,38 @@ func isValidAllowedTool(tool string) bool {
 
 // RunOpts configures one claude CLI invocation.
 type RunOpts struct {
-	Prompt     string `json:"prompt"`
+	// Prompt is fed to the CLI via stdin (never argv), so payload-carrying
+	// prompts don't hit OS argument-size limits.
+	Prompt string `json:"prompt"`
+	// JsonSchema is passed to --json-schema; the result's structured_output
+	// then conforms to it. RunStructured fills this from the result type.
 	JsonSchema string `json:"json_schema"`
-	// Name is a short op label used in the [claude] [cache] log line emitted
-	// after each call. Optional; defaults to "unnamed" when blank. Set per
-	// call site so per-workflow cache hit rate is greppable.
-	Name         string   `json:"name"`
+	// Name is the op label in the per-call [claude] [cache] log line, keeping
+	// per-workflow cache hits greppable. Blank defaults to "unnamed".
+	Name string `json:"name"`
+	// AllowedTools maps to repeated --allowedTools flags; values are
+	// shape-checked so one can't smuggle extra CLI flags.
 	AllowedTools []string `json:"allowed_tools"`
-	MaxTurns     int      `json:"max_turns"`
-	ModelID      Model    `json:"model_id"`
-	// SystemPromptFile is passed through to the CLI's --system-prompt-file.
-	// Must be an absolute path — the CLI runs with absDir as its working dir,
-	// so a relative path would resolve against that, not the caller's CWD.
+	// DisallowedTools maps to --disallowedTools; the CLI evaluates deny rules
+	// before allow rules.
+	DisallowedTools []string `json:"disallowed_tools"`
+	// MaxTurns maps to --max-turns; 0 omits the flag (the CLI's default).
+	MaxTurns int `json:"max_turns"`
+	// ModelID maps to --model: an alias or a pinned claude-* ID, validated by
+	// IsValidModel.
+	ModelID Model `json:"model_id"`
+	// SystemPromptFile maps to --system-prompt-file. Absolute path only — a
+	// relative one would resolve against absDir, not the caller's CWD.
 	SystemPromptFile string `json:"system_prompt_file"`
-	Stream           bool   `json:"stream"`
-	ResumeSessionID  string `json:"resume_session_id"`
-	// TempDir, when set, is a directory (created if needed) the call's
-	// settings, prompt, output, and error are dumped into for debugging, as
-	// {stamp}-{name}-{kind} with one millisecond-precise stamp per call, so
-	// repeated calls never overwrite each other and ls lists them
-	// chronologically. Excluded from the dumped settings JSON. Empty disables
-	// the dumps.
+	// Stream selects stream-json output with live [claude] event logging;
+	// otherwise one JSON result blob is captured silently.
+	Stream bool `json:"stream"`
+	// ResumeSessionID maps to --resume: a prior result's SessionID, continuing
+	// that conversation instead of starting fresh.
+	ResumeSessionID string `json:"resume_session_id"`
+	// TempDir, when set, receives per-call debug dumps (settings, prompt,
+	// output, error) as {stamp}-{name}-{kind}, stamped so calls never
+	// overwrite each other. Empty disables the dumps.
 	TempDir string `json:"-"`
 }
 
@@ -136,6 +147,12 @@ func buildArgs(opts RunOpts) ([]string, error) {
 			return nil, errors.New("invalid allowed tool: " + tool)
 		}
 		args = append(args, "--allowedTools", tool)
+	}
+	for _, tool := range opts.DisallowedTools {
+		if !isValidAllowedTool(tool) {
+			return nil, errors.New("invalid disallowed tool: " + tool)
+		}
+		args = append(args, "--disallowedTools", tool)
 	}
 
 	return args, nil

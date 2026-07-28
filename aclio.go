@@ -68,8 +68,9 @@ type Request struct {
 	// Stream logs events live as they arrive.
 	Stream bool
 
-	// ClaudeOpts supplies Claude-only extras (AllowedTools, SystemPromptFile,
-	// MaxTurns, TempDir). Consulted only when Provider is Claude.
+	// ClaudeOpts supplies Claude-only extras (AllowedTools, DisallowedTools,
+	// SystemPromptFile, MaxTurns, TempDir). Consulted only when Provider is
+	// Claude.
 	ClaudeOpts *claude.RunOpts
 	// CodexOpts supplies Codex-only extras (Sandbox, SkipGitRepoCheck,
 	// Ephemeral, TempDir). Consulted only when Provider is Codex.
@@ -164,6 +165,7 @@ func claudeOpts(req Request) claude.RunOpts {
 	}
 	if e := req.ClaudeOpts; e != nil {
 		opts.AllowedTools = e.AllowedTools
+		opts.DisallowedTools = e.DisallowedTools
 		opts.SystemPromptFile = e.SystemPromptFile
 		opts.MaxTurns = e.MaxTurns
 		opts.TempDir = e.TempDir

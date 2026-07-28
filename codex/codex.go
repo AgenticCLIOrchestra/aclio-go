@@ -39,9 +39,11 @@ var modelRegex = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // RunOpts configures one `codex exec` invocation.
 type RunOpts struct {
+	// Prompt is fed to the CLI via stdin (never argv), so payload-carrying
+	// prompts don't hit OS argument-size limits.
 	Prompt string `json:"prompt"`
-	// Name is a short op label used in the [codex] [usage] log line emitted
-	// after each call. Optional; defaults to "unnamed" when blank.
+	// Name is the op label in the per-call [codex] [usage] log line, keeping
+	// per-workflow usage greppable. Blank defaults to "unnamed".
 	Name string `json:"name"`
 	// Model is the --model value; empty leaves Codex on its configured default.
 	Model string `json:"model"`
@@ -60,12 +62,10 @@ type RunOpts struct {
 	// Stream, when true, logs each JSONL event live as a [codex] line. Events
 	// are parsed either way; this only controls log verbosity.
 	Stream bool `json:"stream"`
-	// TempDir, when set, is a directory (created if needed) the call's
-	// settings, prompt, output, and error are dumped into for debugging, as
-	// {stamp}-{name}-{kind} with one millisecond-precise stamp per call, so
-	// repeated calls never overwrite each other and ls lists them
-	// chronologically. The output-schema file is written there too. Empty uses
-	// an OS temp dir for the schema and disables dumps.
+	// TempDir, when set, receives per-call debug dumps (settings, prompt,
+	// output, error) as {stamp}-{name}-{kind}, stamped so calls never
+	// overwrite each other; the output-schema file lands there too. Empty
+	// uses an OS temp dir for the schema and disables dumps.
 	TempDir string `json:"-"`
 }
 
