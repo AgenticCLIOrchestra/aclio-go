@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -159,8 +161,11 @@ func Capture(cmd *exec.Cmd) (string, error) {
 // Stream runs cmd and calls onLine for each non-empty stdout line as it
 // arrives, with the interrupt guard installed. It returns after the process
 // exits. On interrupt it returns ErrInterrupted (wrapping the child's wait
-// error) rather than exiting the process. The scanner buffer is sized
-// generously for large single-line JSON events.
+// error) rather than exiting the process. Lines are read through a plain
+// Reader loop, NOT a bufio.Scanner: a single stream-json event can be
+// arbitrarily large (a tool_result echoing a lockfile-sized file runs to
+// tens of MB), and any Scanner buffer cap would abort an otherwise healthy
+// run mid-stream with "token too long".
 func Stream(cmd *exec.Cmd, onLine func(line string)) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -173,15 +178,22 @@ func Stream(cmd *exec.Cmd, onLine func(line string)) error {
 	g := newInterruptGuard(cmd)
 	defer g.stop()
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
+	reader := bufio.NewReaderSize(stdout, 1024*1024)
+	var scanErr error
+	for {
+		line, readErr := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
 		if line != "" {
 			onLine(line)
 		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			scanErr = readErr
+			break
+		}
 	}
-	scanErr := scanner.Err()
 	waitErr := cmd.Wait()
 
 	if g.wasInterrupted() {
