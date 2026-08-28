@@ -59,6 +59,11 @@ type RunOpts struct {
 	// ResumeSessionID maps to --resume: a prior result's SessionID, continuing
 	// that conversation instead of starting fresh.
 	ResumeSessionID string `json:"resume_session_id"`
+	// ForkSession maps to --fork-session: the resumed conversation continues
+	// under a new session id, leaving the original session untouched. Valid
+	// only alongside ResumeSessionID — there is no session to fork otherwise,
+	// and buildArgs rejects it.
+	ForkSession bool `json:"fork_session"`
 	// TempDir, when set, receives per-call debug dumps (settings, prompt,
 	// output, error) as {stamp}-{name}-{kind}, stamped so calls never
 	// overwrite each other. Empty disables the dumps.
@@ -121,8 +126,14 @@ func buildArgs(opts RunOpts) ([]string, error) {
 	// Bare -p (no value): print mode; the prompt is fed on stdin by Run.
 	args := []string{"-p", "--output-format", outputFormat}
 
+	if opts.ForkSession && opts.ResumeSessionID == "" {
+		return nil, errors.New("ForkSession requires ResumeSessionID: there is no session to fork")
+	}
 	if opts.ResumeSessionID != "" {
 		args = append(args, "--resume", opts.ResumeSessionID)
+		if opts.ForkSession {
+			args = append(args, "--fork-session")
+		}
 	}
 	if opts.Stream {
 		args = append(args, "--verbose")

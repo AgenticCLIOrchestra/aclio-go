@@ -23,6 +23,7 @@ func TestClaudeOptsMapping(t *testing.T) {
 			AllowedTools:     []string{"Read"},
 			SystemPromptFile: "/abs/sys.md",
 			MaxTurns:         5,
+			ForkSession:      true,
 			TempDir:          "/tmp/dbg",
 			// These must NOT override the shared fields:
 			Prompt:  "IGNORED",
@@ -36,7 +37,7 @@ func TestClaudeOptsMapping(t *testing.T) {
 	if !opts.Stream || opts.Name != "op" || opts.JsonSchema != `{"type":"object"}` {
 		t.Errorf("shared fields wrong: %+v", opts)
 	}
-	if len(opts.AllowedTools) != 1 || opts.SystemPromptFile != "/abs/sys.md" || opts.MaxTurns != 5 || opts.TempDir != "/tmp/dbg" {
+	if len(opts.AllowedTools) != 1 || opts.SystemPromptFile != "/abs/sys.md" || opts.MaxTurns != 5 || opts.TempDir != "/tmp/dbg" || !opts.ForkSession {
 		t.Errorf("claude-only extras not overlaid: %+v", opts)
 	}
 }
