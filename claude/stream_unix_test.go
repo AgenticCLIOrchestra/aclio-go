@@ -43,7 +43,7 @@ func TestRunStreamCapturesResult(t *testing.T) {
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}`,
 		`{"type":"result","session_id":"s1","result":"done"}`,
 	)
-	res, err := runStream(cmd)
+	res, err := runStream(cmd, "[claude]")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestRunStreamMissingResult(t *testing.T) {
 	cmd := writeStream(t,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"no result follows"}]}}`,
 	)
-	if _, err := runStream(cmd); err == nil {
+	if _, err := runStream(cmd, "[claude]"); err == nil {
 		t.Error("runStream should error when the stream has no result event")
 	}
 }
@@ -68,7 +68,7 @@ func TestRunStreamLargeLine(t *testing.T) {
 	// its 10 MB max — guards cliexec.Stream's buffer sizing.
 	big := strings.Repeat("x", 1_500_000)
 	cmd := writeStream(t, `{"type":"result","session_id":"s","result":"`+big+`"}`)
-	res, err := runStream(cmd)
+	res, err := runStream(cmd, "[claude]")
 	if err != nil {
 		t.Fatal(err)
 	}

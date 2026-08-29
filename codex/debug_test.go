@@ -68,15 +68,15 @@ func captureLog(t *testing.T, fn func()) string {
 // size. An unset model logs as "default".
 func TestLogStart(t *testing.T) {
 	got := captureLog(t, func() {
-		logStart(RunOpts{Name: "triage", Model: "o3", Prompt: "12345"})
+		logStart(RunOpts{Name: "triage", Model: "o3", Prompt: "12345"}, "[codex] [triage]")
 	})
-	want := "[codex] [start] op=triage model=o3 prompt_chars=5\n"
+	want := "[codex] [triage] [start] op=triage model=o3 prompt_chars=5\n"
 	if got != want {
 		t.Errorf("logStart wrote %q, want %q", got, want)
 	}
 
 	got = captureLog(t, func() {
-		logStart(RunOpts{})
+		logStart(RunOpts{}, "[codex]")
 	})
 	want = "[codex] [start] op=unnamed model=default prompt_chars=0\n"
 	if got != want {

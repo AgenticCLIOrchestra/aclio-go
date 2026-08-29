@@ -98,7 +98,7 @@ Set `RunOpts.TempDir` to dump each call's settings/prompt/output/error for debug
 
 #### Stream output
 
-With `Stream: true`, every event the CLI emits is logged to the shared writer as **one line, always prefixed `[claude]`** so it stays greppable when interleaved with other terminal output (`grep '^\[claude\]'`). The vocabulary:
+With `Stream: true`, every event the CLI emits is logged to the shared writer as **one line, always prefixed `[claude]`** so it stays greppable when interleaved with other terminal output (`grep '^\[claude\]'`). When `RunOpts.Name` is set, the prefix carries it too — `[claude] [<name>]` — so a named run's lines can be filtered by name as well (`grep '^\[claude\] \[triage\]'`); the vocabulary below shows the bare, unnamed form. The vocabulary:
 
 | Line | Meaning |
 |---|---|

@@ -130,7 +130,7 @@ func TestHandleStreamLineRendering(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var lastResult string
-			out := captureLog(t, func() { handleStreamLine(tc.line, &lastResult) })
+			out := captureLog(t, func() { handleStreamLine(tc.line, &lastResult, "[claude]") })
 			if got := strings.TrimSpace(out); got != tc.want {
 				t.Errorf("log = %q\nwant  %q", got, tc.want)
 			}
@@ -144,12 +144,26 @@ func TestHandleStreamLineRendering(t *testing.T) {
 func TestHandleStreamLineCapturesResult(t *testing.T) {
 	line := `{"type":"result","session_id":"s1","result":"done"}`
 	var lastResult string
-	out := captureLog(t, func() { handleStreamLine(line, &lastResult) })
+	out := captureLog(t, func() { handleStreamLine(line, &lastResult, "[claude]") })
 
 	if strings.TrimSpace(out) != "" {
 		t.Errorf("a result line should not be logged, got %q", out)
 	}
 	if lastResult != line {
 		t.Errorf("lastResult = %q, want the raw result line", lastResult)
+	}
+}
+
+// TestHandleStreamLineNamedPrefix — when the run is named, every line is led by
+// "[claude] [name]" so a named run's output is filterable by name.
+func TestHandleStreamLineNamedPrefix(t *testing.T) {
+	var lastResult string
+	out := captureLog(t, func() {
+		handleStreamLine(
+			`{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}`,
+			&lastResult, "[claude] [triage]")
+	})
+	if got := strings.TrimSpace(out); got != "[claude] [triage] [text] hi" {
+		t.Errorf("log = %q, want the name-prefixed line", got)
 	}
 }

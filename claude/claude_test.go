@@ -146,22 +146,22 @@ func TestBuildArgsDisallowedTools(t *testing.T) {
 	}
 }
 
-// TestLogStart — one greppable [claude] [start] line per call, carrying the
-// op name (pairing with the [claude] [cache] completion line), model, and
-// prompt size.
+// TestLogStart — one greppable [start] line per call, carrying the op name
+// (pairing with the [cache] completion line), model, and prompt size. A named
+// run's prefix carries the name; a blank name stays bare [claude].
 func TestLogStart(t *testing.T) {
 	got := captureLog(t, func() {
-		logStart(RunOpts{Name: "triage", ModelID: Sonnet, Prompt: "12345"})
+		logStart(RunOpts{Name: "triage", ModelID: Sonnet, Prompt: "12345"}, "[claude] [triage]")
 	})
-	want := "[claude] [start] op=triage model=" + string(Sonnet) + " prompt_chars=5\n"
+	want := "[claude] [triage] [start] op=triage model=" + string(Sonnet) + " prompt_chars=5\n"
 	if got != want {
 		t.Errorf("logStart wrote %q, want %q", got, want)
 	}
 
 	got = captureLog(t, func() {
-		logStart(RunOpts{ModelID: Sonnet})
+		logStart(RunOpts{ModelID: Sonnet}, "[claude]")
 	})
-	if !strings.Contains(got, "op=unnamed") {
-		t.Errorf("blank name should log as op=unnamed, got %q", got)
+	if !strings.HasPrefix(got, "[claude] [start] ") || !strings.Contains(got, "op=unnamed") {
+		t.Errorf("blank name should log bare [claude] [start] with op=unnamed, got %q", got)
 	}
 }

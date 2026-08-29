@@ -22,6 +22,17 @@ func Logf(format string, args ...any) {
 	fmt.Fprintf(LogWriter, format+"\n", args...)
 }
 
+// LogPrefix builds the leading tag every log line for a run starts with:
+// "[provider]", or "[provider] [name]" when name is non-empty — so the lines
+// of a named run can be filtered by name (e.g. a workflow step) as well as by
+// provider, even when several runs interleave on the same writer.
+func LogPrefix(provider, name string) string {
+	if name == "" {
+		return "[" + provider + "]"
+	}
+	return "[" + provider + "] [" + name + "]"
+}
+
 // Truncate shortens s to max runes-ish (bytes) with an ellipsis, for log
 // lines that shouldn't dump full tool inputs or message bodies.
 func Truncate(s string, max int) string {
