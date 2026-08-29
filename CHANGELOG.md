@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-08-29
+
+### Changed
+- When `RunOpts.Name` is set, every log line for that run is now led by `[claude] [<name>]` / `[codex] [<name>]` instead of the bare `[claude]` / `[codex]` — the start, streaming-event, and completion (`[cache]` / `[usage]`) lines alike — so a named run's output can be filtered by name (e.g. a workflow step) even when several runs interleave on the same `LogWriter`. Runs with a blank `Name` are unchanged (bare `[claude]` / `[codex]`)
+
 ## [0.6.0] - 2026-08-29
 
 ### Changed
@@ -77,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.7.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.4.0...v0.4.1

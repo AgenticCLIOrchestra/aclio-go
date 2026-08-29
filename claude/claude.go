@@ -86,7 +86,8 @@ func Run(absDir string, opts RunOpts) (string, error) {
 		return "", err
 	}
 
-	logStart(opts)
+	prefix := cliexec.LogPrefix("claude", opts.Name)
+	logStart(opts, prefix)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
@@ -101,12 +102,12 @@ func Run(absDir string, opts RunOpts) (string, error) {
 
 	var out string
 	if opts.Stream {
-		out, err = runStream(cmd)
+		out, err = runStream(cmd, prefix)
 	} else {
 		out, err = cliexec.Capture(cmd)
 	}
 
-	logCacheMetrics(opts.Name, out, err)
+	logCacheMetrics(prefix, opts.Name, out, err)
 	if out != "" {
 		debugOut(opts.TempDir, stamp, opts.Name, out)
 	}
@@ -169,24 +170,25 @@ func buildArgs(opts RunOpts) ([]string, error) {
 	return args, nil
 }
 
-// logStart writes one greppable [claude] [start] line per call, announcing
-// the spawn. It pairs with the [claude] [cache] completion line via the
-// shared op name; the prompt size is an early tell for runaway payload
-// growth. Emitted only after arg validation, so a start line means a process
-// was actually launched.
-func logStart(opts RunOpts) {
+// logStart writes one greppable [start] line per call (prefix is "[claude]" or
+// "[claude] [name]"), announcing the spawn. It pairs with the [cache]
+// completion line via the shared op name; the prompt size is an early tell for
+// runaway payload growth. Emitted only after arg validation, so a start line
+// means a process was actually launched.
+func logStart(opts RunOpts, prefix string) {
 	op := opts.Name
 	if op == "" {
 		op = "unnamed"
 	}
-	cliexec.Logf("[claude] [start] op=%s model=%s prompt_chars=%d", op, opts.ModelID, len(opts.Prompt))
+	cliexec.Logf("%s [start] op=%s model=%s prompt_chars=%d", prefix, op, opts.ModelID, len(opts.Prompt))
 }
 
-// logCacheMetrics writes one greppable [claude] [cache] line per call.
-// Best-effort: the CLI's result blob is JSON-shaped in both --output-format
-// modes (the last stream-json line for stream mode), so we just try to parse
-// and silently bail on anything unexpected.
-func logCacheMetrics(name, output string, runErr error) {
+// logCacheMetrics writes one greppable [cache] line per call (prefix is
+// "[claude]" or "[claude] [name]"). Best-effort: the CLI's result blob is
+// JSON-shaped in both --output-format modes (the last stream-json line for
+// stream mode), so we just try to parse and silently bail on anything
+// unexpected.
+func logCacheMetrics(prefix, name, output string, runErr error) {
 	if runErr != nil || output == "" {
 		return
 	}
@@ -205,7 +207,8 @@ func logCacheMetrics(name, output string, runErr error) {
 		u.CacheReadInputTokens == 0 && u.CacheCreationInputTokens == 0 {
 		return
 	}
-	cliexec.Logf("[claude] [cache] op=%s in=%d out=%d cache_read=%d cache_write=%d 1h=%d 5m=%d cost_usd=%.4f",
+	cliexec.Logf("%s [cache] op=%s in=%d out=%d cache_read=%d cache_write=%d 1h=%d 5m=%d cost_usd=%.4f",
+		prefix,
 		op,
 		u.InputTokens,
 		u.OutputTokens,
