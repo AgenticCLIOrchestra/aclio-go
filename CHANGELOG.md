@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-10-24
+
+### Changed
+- Minimum Go version raised to 1.26 (`go` directive bumped from 1.25.0 to 1.26.0); consumers must build with Go 1.26 or newer
+- Bumped `golang.org/x/sys` to v0.49.0 and `golang.org/x/term` to v0.47.0 (and the indirect `golang.org/x/text` to v0.43.0)
+
 ## [0.7.0] - 2026-08-29
 
 ### Changed
@@ -82,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.8.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.4.1...v0.5.0
