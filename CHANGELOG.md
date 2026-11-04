@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-04
+
+### Added
+- `claudeinstall` package — opt-in installer for the Claude Code CLI using Anthropic's official native installer (`https://claude.ai/install.sh` with `bash` on macOS/Linux/WSL, `install.ps1` with PowerShell on Windows). `claudeinstall.Ensure(opts)` returns the path of an existing `claude` binary (on `PATH` or in the installer's default `~/.local/bin`) and installs only if none is found; `claudeinstall.Install(opts)` always runs the installer and returns the installed binary's path. `Opts.Version` picks the target (`stable`, `latest`, or a pinned `x.y.z`; blank means latest, validated before any download), `Opts.Output` receives the installer's output (nil defaults to `os.Stderr`)
+- `codexinstall` package — the same API for the Codex CLI using OpenAI's official standalone installer (`https://chatgpt.com/codex/install.sh` with `sh`, `install.ps1` on Windows), run with `CODEX_NON_INTERACTIVE=1` so its prompts can't block. `Opts.Version` accepts `latest` or a pinned `x.y.z` (alpha/beta suffixes allowed) and is passed via `CODEX_RELEASE`; the default install directory honors `CODEX_INSTALL_DIR`, else `~/.local/bin` (unix) / `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin` (Windows)
+- When `Ensure` or `Install` finds the binary in the installer's default directory, that directory is moved to the front of the current process's `PATH`, so `claude.Run` / `codex.Run` (and `aclio.Run`) find a freshly installed CLI without a new shell. After `Install`, the fresh copy takes precedence over any other copy already on `PATH`
+- Neither package is imported by any other package in this module: nothing is downloaded or installed unless a consumer imports one and calls `Ensure` or `Install`
+
 ## [0.8.0] - 2026-10-24
 
 ### Changed
@@ -88,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.9.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.5.0...v0.6.0
