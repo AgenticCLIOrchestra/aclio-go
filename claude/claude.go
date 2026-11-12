@@ -74,6 +74,10 @@ type RunOpts struct {
 	// to separate writers. A writer shared between concurrent calls must be
 	// safe for concurrent use (an *os.File is; a bytes.Buffer is not).
 	LogWriter io.Writer `json:"-"`
+	// Stderr receives the claude CLI's own stderr (its warnings and errors,
+	// not the [claude] log lines). nil means os.Stderr. A writer shared between
+	// concurrent calls must be safe for concurrent use.
+	Stderr io.Writer `json:"-"`
 }
 
 // Run invokes the claude CLI in absDir and returns its result blob (JSON in
@@ -97,7 +101,7 @@ func Run(absDir string, opts RunOpts) (string, error) {
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
-	cmd := cliexec.Command(absDir, "claude", args)
+	cmd := cliexec.Command(absDir, "claude", args, opts.Stderr)
 	// The prompt travels via stdin, not as a `-p` argument: a single argv
 	// element is capped at ~128 KB on Linux (MAX_ARG_STRLEN) and the whole
 	// argv+env near ~1 MB elsewhere, and payload-carrying prompts blow past

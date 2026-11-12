@@ -97,6 +97,24 @@ func TestLogWriterMapping(t *testing.T) {
 	}
 }
 
+// Stderr is a shared field too: it always comes from the Request.
+func TestStderrMapping(t *testing.T) {
+	var reqW, extraW bytes.Buffer
+
+	c := claudeOpts(Request{Provider: Claude, Stderr: &reqW, ClaudeOpts: &claude.RunOpts{Stderr: &extraW}})
+	if c.Stderr != &reqW {
+		t.Error("claude: Stderr not taken from Request")
+	}
+	x := codexOpts(Request{Provider: Codex, Stderr: &reqW, CodexOpts: &codex.RunOpts{Stderr: &extraW}})
+	if x.Stderr != &reqW {
+		t.Error("codex: Stderr not taken from Request")
+	}
+
+	if claudeOpts(Request{Provider: Claude}).Stderr != nil || codexOpts(Request{Provider: Codex}).Stderr != nil {
+		t.Error("an unset Request.Stderr must stay nil so os.Stderr is used")
+	}
+}
+
 func TestSetLogWriter(t *testing.T) {
 	t.Cleanup(func() { SetLogWriter(nil) })
 

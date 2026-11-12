@@ -73,6 +73,10 @@ type RunOpts struct {
 	// to separate writers. A writer shared between concurrent calls must be
 	// safe for concurrent use (an *os.File is; a bytes.Buffer is not).
 	LogWriter io.Writer `json:"-"`
+	// Stderr receives the codex CLI's own stderr (its warnings and errors,
+	// not the [codex] log lines). nil means os.Stderr. A writer shared between
+	// concurrent calls must be safe for concurrent use.
+	Stderr io.Writer `json:"-"`
 }
 
 // Run invokes `codex exec` in absDir and returns the agent's final message
@@ -102,7 +106,7 @@ func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
-	cmd := cliexec.Command(absDir, "codex", args)
+	cmd := cliexec.Command(absDir, "codex", args, opts.Stderr)
 	// The prompt travels via stdin, not as a positional argument: a single
 	// argv element is capped at ~128 KB on Linux (MAX_ARG_STRLEN) and the
 	// whole argv+env near ~1 MB elsewhere, and payload-carrying prompts blow

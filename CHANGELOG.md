@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-12
+
+### Added
+- Per-call stderr for the CLI: `aclio.Request.Stderr`, `claude.RunOpts.Stderr` and `codex.RunOpts.Stderr` send the `claude` / `codex` process's own stderr (its warnings and errors, separate from this library's `[claude]` / `[codex]` log lines) to their own `io.Writer`. nil keeps `os.Stderr`, so nothing changes unless you set it. Like `LogWriter`, `Request.Stderr` always comes from the `Request`; the `Stderr` inside `Request.ClaudeOpts` / `Request.CodexOpts` is ignored. The field is excluded from the settings debug dump
+
 ## [0.10.0] - 2026-11-12
 
 ### Added
@@ -107,6 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.11.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.7.0...v0.8.0
