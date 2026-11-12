@@ -10,6 +10,7 @@ package codex
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -67,6 +68,11 @@ type RunOpts struct {
 	// overwrite each other; the output-schema file lands there too. Empty
 	// uses an OS temp dir for the schema and disables dumps.
 	TempDir string `json:"-"`
+	// LogWriter receives this call's [codex] log lines. nil uses the
+	// process-wide sink (see aclio.SetLogWriter), so concurrent calls can log
+	// to separate writers. A writer shared between concurrent calls must be
+	// safe for concurrent use (an *os.File is; a bytes.Buffer is not).
+	LogWriter io.Writer `json:"-"`
 }
 
 // Run invokes `codex exec` in absDir and returns the agent's final message
@@ -91,8 +97,8 @@ func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
 		return "", nil, err
 	}
 
-	prefix := cliexec.LogPrefix("codex", opts.Name)
-	logStart(opts, prefix)
+	logger := cliexec.NewLogger(opts.LogWriter, "codex", opts.Name)
+	logStart(opts, logger)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
@@ -104,13 +110,13 @@ func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
 	// tells `codex exec` to read the prompt from stdin.
 	cmd.Stdin = strings.NewReader(opts.Prompt)
 
-	result, err := runStream(cmd, opts.Stream, prefix)
+	result, err := runStream(cmd, opts.Stream, logger)
 	if err != nil {
 		debugError(opts.TempDir, stamp, opts.Name, err)
 		return "", nil, err
 	}
 
-	logUsage(prefix, opts.Name, result)
+	logUsage(logger, opts.Name, result)
 	cliexec.DebugString(opts.TempDir, stamp+"-"+opts.Name+"-output.txt", result.FinalText)
 
 	return result.FinalText, result, nil
@@ -186,13 +192,13 @@ func writeSchemaFile(opts RunOpts, stamp string) (path string, cleanup func(), e
 	return path, func() {}, nil
 }
 
-// logStart writes one greppable [start] line per call (prefix is "[codex]" or
+// logStart writes one greppable [start] line per call (the logger's prefix is "[codex]" or
 // "[codex] [name]"), announcing the spawn. It pairs with the [usage] completion
 // line via the shared op name; the prompt size is an early tell for runaway
 // payload growth. Emitted only after schema and arg validation, so a start line
 // means a process was actually launched. An unset model logs as "default" —
 // Codex runs on its configured default.
-func logStart(opts RunOpts, prefix string) {
+func logStart(opts RunOpts, logger cliexec.Logger) {
 	op := opts.Name
 	if op == "" {
 		op = "unnamed"
@@ -201,12 +207,12 @@ func logStart(opts RunOpts, prefix string) {
 	if model == "" {
 		model = "default"
 	}
-	cliexec.Logf("%s [start] op=%s model=%s prompt_chars=%d", prefix, op, model, len(opts.Prompt))
+	cliexec.Log(logger, "[start] op=%s model=%s prompt_chars=%d", op, model, len(opts.Prompt))
 }
 
-// logUsage writes one greppable [usage] line per call (prefix is "[codex]" or
+// logUsage writes one greppable [usage] line per call (the logger's prefix is "[codex]" or
 // "[codex] [name]").
-func logUsage(prefix, name string, r *RunResult) {
+func logUsage(logger cliexec.Logger, name string, r *RunResult) {
 	if r == nil {
 		return
 	}
@@ -218,6 +224,6 @@ func logUsage(prefix, name string, r *RunResult) {
 	if u.InputTokens == 0 && u.OutputTokens == 0 && u.CachedInputTokens == 0 {
 		return
 	}
-	cliexec.Logf("%s [usage] op=%s in=%d out=%d cached=%d reasoning=%d",
-		prefix, op, u.InputTokens, u.OutputTokens, u.CachedInputTokens, u.ReasoningOutputTokens)
+	cliexec.Log(logger, "[usage] op=%s in=%d out=%d cached=%d reasoning=%d",
+		op, u.InputTokens, u.OutputTokens, u.CachedInputTokens, u.ReasoningOutputTokens)
 }

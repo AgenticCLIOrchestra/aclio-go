@@ -14,8 +14,9 @@
 //	    Prompt:   "Summarize the open TODOs.",
 //	})
 //
-// LogWriter, the ctrl+c behavior, and structured-output schema generation are
-// shared across providers.
+// Logging (a process-wide sink via SetLogWriter, or a per-call
+// Request.LogWriter), the ctrl+c behavior, and structured-output schema
+// generation are shared across providers.
 package aclio
 
 import (
@@ -42,15 +43,18 @@ const (
 	Codex  Provider = "codex"
 )
 
-// SetLogWriter redirects all provider log lines (default os.Stderr). It sets
-// the shared cliexec.LogWriter, so it affects the claude and codex packages
-// too. Pass io.Discard to silence the library.
-func SetLogWriter(w io.Writer) { cliexec.LogWriter = w }
+// SetLogWriter sets the process-wide log sink (default os.Stderr) used by
+// every call that doesn't set its own Request.LogWriter, including direct
+// calls into the claude and codex packages. Pass io.Discard to silence the
+// library, or nil to restore os.Stderr. It is safe to call while runs are in
+// flight; a run already in progress keeps the writer it started with.
+func SetLogWriter(w io.Writer) { cliexec.SetLogWriter(w) }
 
 // Request is a provider-agnostic invocation. The common fields map to each
 // provider's equivalent; provider-specific extras ride along in ClaudeOpts /
 // CodexOpts (only the non-shared fields of those are consulted — Prompt,
-// Model, schema, resume id, name, and streaming always come from this Request).
+// Model, schema, resume id, name, streaming and the log writer always come
+// from this Request).
 type Request struct {
 	Provider Provider
 	Dir      string
@@ -67,6 +71,11 @@ type Request struct {
 	Name string
 	// Stream logs events live as they arrive.
 	Stream bool
+	// LogWriter receives this call's log lines. nil uses the process-wide
+	// sink set by SetLogWriter, so concurrent calls can each log to their own
+	// writer. A writer shared between concurrent calls must be safe for
+	// concurrent use (an *os.File is; a bytes.Buffer is not).
+	LogWriter io.Writer
 
 	// ClaudeOpts supplies Claude-only extras (AllowedTools, DisallowedTools,
 	// SystemPromptFile, MaxTurns, ForkSession, TempDir). Consulted only when
@@ -162,6 +171,7 @@ func claudeOpts(req Request) claude.RunOpts {
 		ModelID:         model,
 		Stream:          req.Stream,
 		ResumeSessionID: req.ResumeID,
+		LogWriter:       req.LogWriter,
 	}
 	if e := req.ClaudeOpts; e != nil {
 		opts.AllowedTools = e.AllowedTools
@@ -184,6 +194,7 @@ func codexOpts(req Request) codex.RunOpts {
 		Model:           req.Model,
 		Stream:          req.Stream,
 		ResumeSessionID: req.ResumeID,
+		LogWriter:       req.LogWriter,
 	}
 	if e := req.CodexOpts; e != nil {
 		opts.Sandbox = e.Sandbox

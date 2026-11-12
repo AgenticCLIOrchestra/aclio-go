@@ -8,6 +8,7 @@ package claude
 import (
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -68,6 +69,11 @@ type RunOpts struct {
 	// output, error) as {stamp}-{name}-{kind}, stamped so calls never
 	// overwrite each other. Empty disables the dumps.
 	TempDir string `json:"-"`
+	// LogWriter receives this call's [claude] log lines. nil uses the
+	// process-wide sink (see aclio.SetLogWriter), so concurrent calls can log
+	// to separate writers. A writer shared between concurrent calls must be
+	// safe for concurrent use (an *os.File is; a bytes.Buffer is not).
+	LogWriter io.Writer `json:"-"`
 }
 
 // Run invokes the claude CLI in absDir and returns its result blob (JSON in
@@ -86,8 +92,8 @@ func Run(absDir string, opts RunOpts) (string, error) {
 		return "", err
 	}
 
-	prefix := cliexec.LogPrefix("claude", opts.Name)
-	logStart(opts, prefix)
+	logger := cliexec.NewLogger(opts.LogWriter, "claude", opts.Name)
+	logStart(opts, logger)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
 
@@ -102,12 +108,12 @@ func Run(absDir string, opts RunOpts) (string, error) {
 
 	var out string
 	if opts.Stream {
-		out, err = runStream(cmd, prefix)
+		out, err = runStream(cmd, logger)
 	} else {
 		out, err = cliexec.Capture(cmd)
 	}
 
-	logCacheMetrics(prefix, opts.Name, out, err)
+	logCacheMetrics(logger, opts.Name, out, err)
 	if out != "" {
 		debugOut(opts.TempDir, stamp, opts.Name, out)
 	}
@@ -170,25 +176,25 @@ func buildArgs(opts RunOpts) ([]string, error) {
 	return args, nil
 }
 
-// logStart writes one greppable [start] line per call (prefix is "[claude]" or
+// logStart writes one greppable [start] line per call (the logger's prefix is "[claude]" or
 // "[claude] [name]"), announcing the spawn. It pairs with the [cache]
 // completion line via the shared op name; the prompt size is an early tell for
 // runaway payload growth. Emitted only after arg validation, so a start line
 // means a process was actually launched.
-func logStart(opts RunOpts, prefix string) {
+func logStart(opts RunOpts, logger cliexec.Logger) {
 	op := opts.Name
 	if op == "" {
 		op = "unnamed"
 	}
-	cliexec.Logf("%s [start] op=%s model=%s prompt_chars=%d", prefix, op, opts.ModelID, len(opts.Prompt))
+	cliexec.Log(logger, "[start] op=%s model=%s prompt_chars=%d", op, opts.ModelID, len(opts.Prompt))
 }
 
-// logCacheMetrics writes one greppable [cache] line per call (prefix is
+// logCacheMetrics writes one greppable [cache] line per call (the logger's prefix is
 // "[claude]" or "[claude] [name]"). Best-effort: the CLI's result blob is
 // JSON-shaped in both --output-format modes (the last stream-json line for
 // stream mode), so we just try to parse and silently bail on anything
 // unexpected.
-func logCacheMetrics(prefix, name, output string, runErr error) {
+func logCacheMetrics(logger cliexec.Logger, name, output string, runErr error) {
 	if runErr != nil || output == "" {
 		return
 	}
@@ -207,8 +213,7 @@ func logCacheMetrics(prefix, name, output string, runErr error) {
 		u.CacheReadInputTokens == 0 && u.CacheCreationInputTokens == 0 {
 		return
 	}
-	cliexec.Logf("%s [cache] op=%s in=%d out=%d cache_read=%d cache_write=%d 1h=%d 5m=%d cost_usd=%.4f",
-		prefix,
+	cliexec.Log(logger, "[cache] op=%s in=%d out=%d cache_read=%d cache_write=%d 1h=%d 5m=%d cost_usd=%.4f",
 		op,
 		u.InputTokens,
 		u.OutputTokens,

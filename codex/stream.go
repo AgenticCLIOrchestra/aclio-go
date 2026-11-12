@@ -27,10 +27,10 @@ type codexItem struct {
 }
 
 // runStream drives cmd, parsing the JSONL event stream into a RunResult and
-// (when logEvents) logging each event as it arrives, led by prefix ("[codex]"
+// (when logEvents) logging each event as it arrives, led by the logger's prefix ("[codex]"
 // or "[codex] [name]"). The final agent_message item's text becomes
 // RunResult.FinalText.
-func runStream(cmd *exec.Cmd, logEvents bool, prefix string) (*RunResult, error) {
+func runStream(cmd *exec.Cmd, logEvents bool, logger cliexec.Logger) (*RunResult, error) {
 	result := &RunResult{}
 
 	err := cliexec.Stream(cmd, func(line string) {
@@ -43,7 +43,7 @@ func runStream(cmd *exec.Cmd, logEvents bool, prefix string) (*RunResult, error)
 		case "thread.started":
 			result.ThreadID = event.ThreadID
 			if logEvents {
-				cliexec.Logf("%s [thread] %s", prefix, event.ThreadID)
+				cliexec.Log(logger, "[thread] %s", event.ThreadID)
 			}
 		case "turn.completed":
 			if event.Usage != nil {
@@ -54,14 +54,14 @@ func runStream(cmd *exec.Cmd, logEvents bool, prefix string) (*RunResult, error)
 			if err := json.Unmarshal(event.Item, &item); err != nil {
 				return
 			}
-			handleItem(result, item, logEvents, prefix)
+			handleItem(result, item, logEvents, logger)
 		case "error":
 			if logEvents {
-				cliexec.Logf("%s [error] %s", prefix, cliexec.Truncate(line, 200))
+				cliexec.Log(logger, "[error] %s", cliexec.Truncate(line, 200))
 			}
 		default:
 			if logEvents {
-				cliexec.Logf("%s [%s]", prefix, event.Type)
+				cliexec.Log(logger, "[%s]", event.Type)
 			}
 		}
 	})
@@ -73,8 +73,8 @@ func runStream(cmd *exec.Cmd, logEvents bool, prefix string) (*RunResult, error)
 }
 
 // handleItem records the final agent message and logs items of interest, led by
-// prefix.
-func handleItem(result *RunResult, item codexItem, logEvents bool, prefix string) {
+// the logger's prefix.
+func handleItem(result *RunResult, item codexItem, logEvents bool, logger cliexec.Logger) {
 	switch item.Type {
 	case "agent_message":
 		// The last agent message is the agent's final answer.
@@ -82,23 +82,23 @@ func handleItem(result *RunResult, item codexItem, logEvents bool, prefix string
 		if logEvents {
 			trimmed := strings.TrimSpace(item.Text)
 			if trimmed != "" {
-				cliexec.Logf("%s [text] %s", prefix, cliexec.Truncate(trimmed, 200))
+				cliexec.Log(logger, "[text] %s", cliexec.Truncate(trimmed, 200))
 			}
 		}
 	case "reasoning":
 		if logEvents {
 			trimmed := strings.TrimSpace(item.Text)
 			if trimmed != "" {
-				cliexec.Logf("%s [reasoning] %s", prefix, cliexec.Truncate(trimmed, 200))
+				cliexec.Log(logger, "[reasoning] %s", cliexec.Truncate(trimmed, 200))
 			}
 		}
 	case "command_execution":
 		if logEvents {
-			cliexec.Logf("%s [command] %s", prefix, cliexec.Truncate(item.Command, 150))
+			cliexec.Log(logger, "[command] %s", cliexec.Truncate(item.Command, 150))
 		}
 	default:
 		if logEvents {
-			cliexec.Logf("%s [item] [%s]", prefix, item.Type)
+			cliexec.Log(logger, "[item] [%s]", item.Type)
 		}
 	}
 }

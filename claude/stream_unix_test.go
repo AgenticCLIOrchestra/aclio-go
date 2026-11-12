@@ -17,13 +17,8 @@ import (
 // fixture), so they're unix-gated — `cat` isn't on a stock windows runner. The
 // portable rendering contract is pinned in stream_test.go via handleStreamLine.
 
-// silenceLog discards log output for a test that only asserts on return values.
-func silenceLog(t *testing.T) {
-	t.Helper()
-	orig := cliexec.LogWriter
-	cliexec.LogWriter = io.Discard
-	t.Cleanup(func() { cliexec.LogWriter = orig })
-}
+// discard is a logger for tests that only assert on return values.
+var discard = cliexec.Logger{Writer: io.Discard, Prefix: "[claude]"}
 
 // writeStream writes JSONL lines to a temp file and returns a `cat` command that
 // replays them through runStream — a process-backed stand-in for the CLI.
@@ -37,13 +32,12 @@ func writeStream(t *testing.T, lines ...string) *exec.Cmd {
 }
 
 func TestRunStreamCapturesResult(t *testing.T) {
-	silenceLog(t)
 	cmd := writeStream(t,
 		`{"type":"system","subtype":"init"}`,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}`,
 		`{"type":"result","session_id":"s1","result":"done"}`,
 	)
-	res, err := runStream(cmd, "[claude]")
+	res, err := runStream(cmd, discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,22 +47,20 @@ func TestRunStreamCapturesResult(t *testing.T) {
 }
 
 func TestRunStreamMissingResult(t *testing.T) {
-	silenceLog(t)
 	cmd := writeStream(t,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"no result follows"}]}}`,
 	)
-	if _, err := runStream(cmd, "[claude]"); err == nil {
+	if _, err := runStream(cmd, discard); err == nil {
 		t.Error("runStream should error when the stream has no result event")
 	}
 }
 
 func TestRunStreamLargeLine(t *testing.T) {
-	silenceLog(t)
 	// ~1.5 MB single line: exceeds the scanner's 1 MB initial buffer, well under
 	// its 10 MB max — guards cliexec.Stream's buffer sizing.
 	big := strings.Repeat("x", 1_500_000)
 	cmd := writeStream(t, `{"type":"result","session_id":"s","result":"`+big+`"}`)
-	res, err := runStream(cmd, "[claude]")
+	res, err := runStream(cmd, discard)
 	if err != nil {
 		t.Fatal(err)
 	}
