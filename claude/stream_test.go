@@ -8,15 +8,13 @@ import (
 	"github.com/agenticcliorchestra/aclio-go/internal/cliexec"
 )
 
-// captureLog redirects the shared log sink into a buffer for the duration of
-// fn and returns what was written.
-func captureLog(t *testing.T, fn func()) string {
+// captureLog runs fn with a logger that writes to a fresh buffer under
+// prefix, and returns what was written. Each call gets its own writer, so
+// tests never touch the process-wide sink.
+func captureLog(t *testing.T, prefix string, fn func(cliexec.Logger)) string {
 	t.Helper()
 	var buf bytes.Buffer
-	orig := cliexec.LogWriter
-	cliexec.LogWriter = &buf
-	t.Cleanup(func() { cliexec.LogWriter = orig })
-	fn()
+	fn(cliexec.Logger{Writer: &buf, Prefix: prefix})
 	return buf.String()
 }
 
@@ -130,7 +128,7 @@ func TestHandleStreamLineRendering(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var lastResult string
-			out := captureLog(t, func() { handleStreamLine(tc.line, &lastResult, "[claude]") })
+			out := captureLog(t, "[claude]", func(l cliexec.Logger) { handleStreamLine(tc.line, &lastResult, l) })
 			if got := strings.TrimSpace(out); got != tc.want {
 				t.Errorf("log = %q\nwant  %q", got, tc.want)
 			}
@@ -144,7 +142,7 @@ func TestHandleStreamLineRendering(t *testing.T) {
 func TestHandleStreamLineCapturesResult(t *testing.T) {
 	line := `{"type":"result","session_id":"s1","result":"done"}`
 	var lastResult string
-	out := captureLog(t, func() { handleStreamLine(line, &lastResult, "[claude]") })
+	out := captureLog(t, "[claude]", func(l cliexec.Logger) { handleStreamLine(line, &lastResult, l) })
 
 	if strings.TrimSpace(out) != "" {
 		t.Errorf("a result line should not be logged, got %q", out)
@@ -158,10 +156,10 @@ func TestHandleStreamLineCapturesResult(t *testing.T) {
 // "[claude] [name]" so a named run's output is filterable by name.
 func TestHandleStreamLineNamedPrefix(t *testing.T) {
 	var lastResult string
-	out := captureLog(t, func() {
+	out := captureLog(t, "[claude] [triage]", func(l cliexec.Logger) {
 		handleStreamLine(
 			`{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}`,
-			&lastResult, "[claude] [triage]")
+			&lastResult, l)
 	})
 	if got := strings.TrimSpace(out); got != "[claude] [triage] [text] hi" {
 		t.Errorf("log = %q, want the name-prefixed line", got)

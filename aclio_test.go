@@ -1,8 +1,10 @@
 package aclio
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/agenticcliorchestra/aclio-go/claude"
@@ -73,6 +75,39 @@ func TestCodexOptsMapping(t *testing.T) {
 	}
 	if opts.Sandbox != codex.SandboxWorkspaceWrite || !opts.SkipGitRepoCheck || !opts.Ephemeral || opts.TempDir != "/tmp/dbg" {
 		t.Errorf("codex-only extras not overlaid: %+v", opts)
+	}
+}
+
+// The per-call LogWriter is a shared field: it always comes from the Request,
+// never from the provider escape hatch.
+func TestLogWriterMapping(t *testing.T) {
+	var reqW, extraW bytes.Buffer
+
+	c := claudeOpts(Request{Provider: Claude, LogWriter: &reqW, ClaudeOpts: &claude.RunOpts{LogWriter: &extraW}})
+	if c.LogWriter != &reqW {
+		t.Error("claude: LogWriter not taken from Request")
+	}
+	x := codexOpts(Request{Provider: Codex, LogWriter: &reqW, CodexOpts: &codex.RunOpts{LogWriter: &extraW}})
+	if x.LogWriter != &reqW {
+		t.Error("codex: LogWriter not taken from Request")
+	}
+
+	if claudeOpts(Request{Provider: Claude}).LogWriter != nil || codexOpts(Request{Provider: Codex}).LogWriter != nil {
+		t.Error("an unset Request.LogWriter must stay nil so the process-wide sink is used")
+	}
+}
+
+func TestSetLogWriter(t *testing.T) {
+	t.Cleanup(func() { SetLogWriter(nil) })
+
+	var buf bytes.Buffer
+	SetLogWriter(&buf)
+	if cliexec.DefaultLogWriter() != &buf {
+		t.Error("SetLogWriter did not set the process-wide sink")
+	}
+	SetLogWriter(nil)
+	if cliexec.DefaultLogWriter() != os.Stderr {
+		t.Error("SetLogWriter(nil) should restore os.Stderr")
 	}
 }
 

@@ -61,7 +61,7 @@ triage, res, err := aclio.RunStructured[Triage](aclio.Request{
 })
 ```
 
-The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools` / `DisallowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once.
+The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools` / `DisallowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once; `Request.LogWriter` (or `RunOpts.LogWriter` in the provider packages) sends one call's lines to its own writer instead, so concurrent calls don't have to share a sink. `SetLogWriter` is safe to call while runs are in flight.
 
 When you need full control, drop to the provider package directly — the root layer is a thin router over them, not a wall.
 

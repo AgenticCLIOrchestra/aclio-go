@@ -10,18 +10,18 @@ import (
 )
 
 // runStream drives cmd in streaming mode and returns the CLI's result blob (the
-// last "result" line). Every other event is logged to cliexec.LogWriter under a
-// uniform, greppable taxonomy — one line each, all led by prefix ("[claude]",
+// last "result" line). Every other event is logged to logger under a
+// uniform, greppable taxonomy — one line each, all led by the logger's prefix ("[claude]",
 // or "[claude] [name]" for a named run): [thinking] / [text] (trimmed,
 // truncated), [tool] [<Name>] <summary>, [tool] [denied] <content> for a
 // rejected tool call, [system] (init collapsed to a marker, other subtypes
 // passed through raw), and [<type>] / [<type>] [<sub>] for anything
 // unrecognised. Malformed lines are skipped silently.
-func runStream(cmd *exec.Cmd, prefix string) (string, error) {
+func runStream(cmd *exec.Cmd, logger cliexec.Logger) (string, error) {
 	var lastResultLine string
 
 	err := cliexec.Stream(cmd, func(line string) {
-		handleStreamLine(line, &lastResultLine, prefix)
+		handleStreamLine(line, &lastResultLine, logger)
 	})
 	if err != nil {
 		return "", err
@@ -34,30 +34,30 @@ func runStream(cmd *exec.Cmd, prefix string) (string, error) {
 }
 
 // handleStreamLine parses one stream-json line, logs it under the taxonomy led
-// by prefix, and captures the CLI's result blob into *lastResult. A malformed
+// by the logger's prefix, and captures the CLI's result blob into *lastResult. A malformed
 // line is skipped silently so the stream continues. Split out from runStream so
 // the rendering contract can be tested without spawning a process.
-func handleStreamLine(line string, lastResult *string, prefix string) {
+func handleStreamLine(line string, lastResult *string, logger cliexec.Logger) {
 	var event streamEvent
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
 		return
 	}
 	switch event.Type {
 	case "assistant":
-		printAssistantEvent(event, prefix)
+		printAssistantEvent(event, logger)
 	case "result":
 		*lastResult = line
 	case "user":
-		printUserEvent(event, prefix)
+		printUserEvent(event, logger)
 	case "system":
-		printSystemEvent(event, line, prefix)
+		printSystemEvent(event, line, logger)
 	default:
 		// Unrecognised event: keep the subtype when the CLI provides one, so a
 		// future event type is at least self-describing in the logs.
 		if event.Subtype != "" {
-			cliexec.Logf("%s [%s] [%s]", prefix, event.Type, event.Subtype)
+			cliexec.Log(logger, "[%s] [%s]", event.Type, event.Subtype)
 		} else {
-			cliexec.Logf("%s [%s]", prefix, event.Type)
+			cliexec.Log(logger, "[%s]", event.Type)
 		}
 	}
 }
@@ -71,12 +71,12 @@ type streamEvent struct {
 // printSystemEvent logs a system event. The init handshake is pure noise, so
 // it collapses to a marker; anything else (e.g. rate_limit_event) is dumped
 // raw so nothing is silently lost.
-func printSystemEvent(event streamEvent, raw, prefix string) {
+func printSystemEvent(event streamEvent, raw string, logger cliexec.Logger) {
 	if event.Subtype == "init" {
-		cliexec.Logf("%s [system] init", prefix)
+		cliexec.Log(logger, "[system] init")
 		return
 	}
-	cliexec.Logf("%s [system] %s", prefix, raw)
+	cliexec.Log(logger, "[system] %s", raw)
 }
 
 type userMessage struct {
@@ -89,7 +89,7 @@ type userMessage struct {
 	} `json:"content"`
 }
 
-func printUserEvent(event streamEvent, prefix string) {
+func printUserEvent(event streamEvent, logger cliexec.Logger) {
 	var msg userMessage
 	if err := json.Unmarshal(event.Message, &msg); err != nil {
 		return
@@ -98,7 +98,7 @@ func printUserEvent(event streamEvent, prefix string) {
 		if block.Type == "tool_result" && block.IsError {
 			// Truncate: a denied Bash call can carry kilobytes of output, and one
 			// screen-flooding line breaks the scannable-stream contract.
-			cliexec.Logf("%s [tool] [denied] %s", prefix, cliexec.Truncate(strings.TrimSpace(block.Content), 200))
+			cliexec.Log(logger, "[tool] [denied] %s", cliexec.Truncate(strings.TrimSpace(block.Content), 200))
 		}
 	}
 }
@@ -114,7 +114,7 @@ type assistantMessage struct {
 	} `json:"content"`
 }
 
-func printAssistantEvent(event streamEvent, prefix string) {
+func printAssistantEvent(event streamEvent, logger cliexec.Logger) {
 	var msg assistantMessage
 	if err := json.Unmarshal(event.Message, &msg); err != nil {
 		return
@@ -124,23 +124,23 @@ func printAssistantEvent(event streamEvent, prefix string) {
 		case "thinking":
 			trimmed := strings.TrimSpace(block.Thinking)
 			if trimmed != "" {
-				cliexec.Logf("%s [thinking] %s", prefix, cliexec.Truncate(trimmed, 200))
+				cliexec.Log(logger, "[thinking] %s", cliexec.Truncate(trimmed, 200))
 			}
 		case "text":
 			trimmed := strings.TrimSpace(block.Text)
 			if trimmed != "" {
-				cliexec.Logf("%s [text] %s", prefix, cliexec.Truncate(trimmed, 200))
+				cliexec.Log(logger, "[text] %s", cliexec.Truncate(trimmed, 200))
 			}
 		case "tool_use":
 			if summary := formatToolInput(block.Name, block.Input); summary != "" {
-				cliexec.Logf("%s [tool] [%s] %s", prefix, block.Name, summary)
+				cliexec.Log(logger, "[tool] [%s] %s", block.Name, summary)
 				continue
 			}
 			text, err := json.Marshal(block.Input)
 			if err != nil {
 				continue
 			}
-			cliexec.Logf("%s [tool] [%s] %s", prefix, block.Name, cliexec.Truncate(string(text), 200))
+			cliexec.Log(logger, "[tool] [%s] %s", block.Name, cliexec.Truncate(string(text), 200))
 		}
 	}
 }

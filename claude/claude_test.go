@@ -3,6 +3,8 @@ package claude
 import (
 	"strings"
 	"testing"
+
+	"github.com/agenticcliorchestra/aclio-go/internal/cliexec"
 )
 
 func TestIsValidModel(t *testing.T) {
@@ -150,16 +152,16 @@ func TestBuildArgsDisallowedTools(t *testing.T) {
 // (pairing with the [cache] completion line), model, and prompt size. A named
 // run's prefix carries the name; a blank name stays bare [claude].
 func TestLogStart(t *testing.T) {
-	got := captureLog(t, func() {
-		logStart(RunOpts{Name: "triage", ModelID: Sonnet, Prompt: "12345"}, "[claude] [triage]")
+	got := captureLog(t, "[claude] [triage]", func(l cliexec.Logger) {
+		logStart(RunOpts{Name: "triage", ModelID: Sonnet, Prompt: "12345"}, l)
 	})
 	want := "[claude] [triage] [start] op=triage model=" + string(Sonnet) + " prompt_chars=5\n"
 	if got != want {
 		t.Errorf("logStart wrote %q, want %q", got, want)
 	}
 
-	got = captureLog(t, func() {
-		logStart(RunOpts{ModelID: Sonnet}, "[claude]")
+	got = captureLog(t, "[claude]", func(l cliexec.Logger) {
+		logStart(RunOpts{ModelID: Sonnet}, l)
 	})
 	if !strings.HasPrefix(got, "[claude] [start] ") || !strings.Contains(got, "op=unnamed") {
 		t.Errorf("blank name should log bare [claude] [start] with op=unnamed, got %q", got)

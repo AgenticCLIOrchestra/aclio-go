@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-12
+
+### Added
+- Per-call log writers: `aclio.Request.LogWriter`, `claude.RunOpts.LogWriter` and `codex.RunOpts.LogWriter` send one call's `[claude]` / `[codex]` log lines to their own `io.Writer`, so concurrent calls no longer have to share a sink. nil keeps the process-wide sink. Like the other shared fields, `Request.LogWriter` always comes from the `Request`; the `LogWriter` inside `Request.ClaudeOpts` / `Request.CodexOpts` is ignored. The field is excluded from the settings debug dump
+
+### Changed
+- `aclio.SetLogWriter` is now safe to call while runs are in flight: the process-wide sink is held atomically, and a run keeps the sink it started with. `SetLogWriter(nil)` restores `os.Stderr` (previously the next log line would panic)
+
+### Fixed
+- Data race between `aclio.SetLogWriter` and log lines written by in-flight runs
+
 ## [0.9.0] - 2026-11-04
 
 ### Added
@@ -96,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.10.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.6.0...v0.7.0

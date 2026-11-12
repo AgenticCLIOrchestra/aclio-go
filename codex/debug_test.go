@@ -51,15 +51,13 @@ func TestDebugSettingsBlanksPrompt(t *testing.T) {
 	}
 }
 
-// captureLog redirects the shared log sink into a buffer for the duration of
-// fn and returns what was written.
-func captureLog(t *testing.T, fn func()) string {
+// captureLog runs fn with a logger that writes to a fresh buffer under
+// prefix, and returns what was written. Each call gets its own writer, so
+// tests never touch the process-wide sink.
+func captureLog(t *testing.T, prefix string, fn func(cliexec.Logger)) string {
 	t.Helper()
 	var buf bytes.Buffer
-	orig := cliexec.LogWriter
-	cliexec.LogWriter = &buf
-	t.Cleanup(func() { cliexec.LogWriter = orig })
-	fn()
+	fn(cliexec.Logger{Writer: &buf, Prefix: prefix})
 	return buf.String()
 }
 
@@ -67,16 +65,16 @@ func captureLog(t *testing.T, fn func()) string {
 // name (pairing with the [codex] [usage] completion line), model, and prompt
 // size. An unset model logs as "default".
 func TestLogStart(t *testing.T) {
-	got := captureLog(t, func() {
-		logStart(RunOpts{Name: "triage", Model: "o3", Prompt: "12345"}, "[codex] [triage]")
+	got := captureLog(t, "[codex] [triage]", func(l cliexec.Logger) {
+		logStart(RunOpts{Name: "triage", Model: "o3", Prompt: "12345"}, l)
 	})
 	want := "[codex] [triage] [start] op=triage model=o3 prompt_chars=5\n"
 	if got != want {
 		t.Errorf("logStart wrote %q, want %q", got, want)
 	}
 
-	got = captureLog(t, func() {
-		logStart(RunOpts{}, "[codex]")
+	got = captureLog(t, "[codex]", func(l cliexec.Logger) {
+		logStart(RunOpts{}, l)
 	})
 	want = "[codex] [start] op=unnamed model=default prompt_chars=0\n"
 	if got != want {
