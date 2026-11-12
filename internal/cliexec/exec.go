@@ -46,12 +46,22 @@ func defaultInterruptChan() (<-chan os.Signal, func()) {
 // while they run. Detached, the child has no controlling terminal to break.
 // The flip side is that terminal signals no longer reach it, so callers pair
 // this with Capture/Stream, which install the interrupt guard.
-func Command(dir, bin string, args []string) *exec.Cmd {
+//
+// The child's stderr goes to stderr, or to os.Stderr when stderr is nil.
+func Command(dir, bin string, args []string, stderr io.Writer) *exec.Cmd {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = StderrOr(stderr)
 	cmd.SysProcAttr = detachedSysProcAttr()
 	return cmd
+}
+
+// StderrOr returns w, or os.Stderr when w is nil.
+func StderrOr(w io.Writer) io.Writer {
+	if w == nil {
+		return os.Stderr
+	}
+	return w
 }
 
 // interruptGuard makes ctrl+c work while a detached child runs. Detachment

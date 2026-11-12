@@ -48,9 +48,30 @@ func waitForReady(t *testing.T, dir string) {
 	t.Fatalf("child did not signal readiness (marker %q) in time", marker)
 }
 
+// TestCommandStderr — the child's stderr goes to the writer given, and only
+// there; its stdout is still captured separately. nil keeps os.Stderr.
+func TestCommandStderr(t *testing.T) {
+	var stderr strings.Builder
+	cmd := Command(t.TempDir(), "sh", []string{"-c", "echo out; echo oops >&2"}, &stderr)
+	out, err := Capture(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out) != "out" {
+		t.Errorf("stdout = %q, want only \"out\"", out)
+	}
+	if strings.TrimSpace(stderr.String()) != "oops" {
+		t.Errorf("stderr = %q, want \"oops\"", stderr.String())
+	}
+
+	if got := Command(t.TempDir(), "true", nil, nil).Stderr; got != os.Stderr {
+		t.Errorf("nil stderr: cmd.Stderr = %v, want os.Stderr", got)
+	}
+}
+
 // TestCommandDetachesSession — the child runs in its own session (D3.1).
 func TestCommandDetachesSession(t *testing.T) {
-	cmd := Command(t.TempDir(), "sleep", []string{"30"})
+	cmd := Command(t.TempDir(), "sleep", []string{"30"}, nil)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +112,7 @@ func TestGuardKillsProcessGroup(t *testing.T) {
 	dir := t.TempDir()
 	// touch ready after the trap is set and the grandchild is backgrounded, so
 	// readiness means "whole group up and ignoring SIGINT".
-	cmd := Command(dir, "sh", []string{"-c", "trap '' INT; echo $$; sleep 60 & touch ready; sleep 60"})
+	cmd := Command(dir, "sh", []string{"-c", "trap '' INT; echo $$; sleep 60 & touch ready; sleep 60"}, nil)
 	var out string
 	var capErr error
 	done := make(chan struct{})
@@ -142,7 +163,7 @@ func TestCaptureReturnsErrInterrupted(t *testing.T) {
 	defer swapInterruptChan(injected)()
 
 	dir := t.TempDir()
-	cmd := Command(dir, "sh", []string{"-c", "touch ready; sleep 60"})
+	cmd := Command(dir, "sh", []string{"-c", "touch ready; sleep 60"}, nil)
 	done := make(chan error, 1)
 	go func() {
 		_, err := Capture(cmd)
@@ -168,7 +189,7 @@ func TestGuardScopedToRun(t *testing.T) {
 	injected := make(chan os.Signal, 1)
 	defer swapInterruptChan(injected)()
 
-	cmd := Command(t.TempDir(), "true", nil)
+	cmd := Command(t.TempDir(), "true", nil, nil)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +215,7 @@ func TestGracefulInterruptNoSigkill(t *testing.T) {
 	defer swapInterruptChan(injected)()
 
 	dir := t.TempDir()
-	cmd := Command(dir, "sh", []string{"-c", "trap 'exit 0' INT; touch ready; sleep 60"})
+	cmd := Command(dir, "sh", []string{"-c", "trap 'exit 0' INT; touch ready; sleep 60"}, nil)
 	done := make(chan error, 1)
 	go func() {
 		_, err := Capture(cmd)
@@ -229,7 +250,7 @@ func TestStubbornChildSigkilled(t *testing.T) {
 	defer swapInterruptChan(injected)()
 
 	dir := t.TempDir()
-	cmd := Command(dir, "sh", []string{"-c", "trap '' INT; touch ready; sleep 60"})
+	cmd := Command(dir, "sh", []string{"-c", "trap '' INT; touch ready; sleep 60"}, nil)
 	done := make(chan error, 1)
 	go func() {
 		_, err := Capture(cmd)

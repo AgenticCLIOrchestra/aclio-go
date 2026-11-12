@@ -53,8 +53,8 @@ func SetLogWriter(w io.Writer) { cliexec.SetLogWriter(w) }
 // Request is a provider-agnostic invocation. The common fields map to each
 // provider's equivalent; provider-specific extras ride along in ClaudeOpts /
 // CodexOpts (only the non-shared fields of those are consulted — Prompt,
-// Model, schema, resume id, name, streaming and the log writer always come
-// from this Request).
+// Model, schema, resume id, name, streaming, the log writer and stderr always
+// come from this Request).
 type Request struct {
 	Provider Provider
 	Dir      string
@@ -76,6 +76,10 @@ type Request struct {
 	// writer. A writer shared between concurrent calls must be safe for
 	// concurrent use (an *os.File is; a bytes.Buffer is not).
 	LogWriter io.Writer
+	// Stderr receives the CLI's own stderr (its warnings and errors, not this
+	// library's log lines). nil means os.Stderr. A writer shared between
+	// concurrent calls must be safe for concurrent use.
+	Stderr io.Writer
 
 	// ClaudeOpts supplies Claude-only extras (AllowedTools, DisallowedTools,
 	// SystemPromptFile, MaxTurns, ForkSession, TempDir). Consulted only when
@@ -172,6 +176,7 @@ func claudeOpts(req Request) claude.RunOpts {
 		Stream:          req.Stream,
 		ResumeSessionID: req.ResumeID,
 		LogWriter:       req.LogWriter,
+		Stderr:          req.Stderr,
 	}
 	if e := req.ClaudeOpts; e != nil {
 		opts.AllowedTools = e.AllowedTools
@@ -195,6 +200,7 @@ func codexOpts(req Request) codex.RunOpts {
 		Stream:          req.Stream,
 		ResumeSessionID: req.ResumeID,
 		LogWriter:       req.LogWriter,
+		Stderr:          req.Stderr,
 	}
 	if e := req.CodexOpts; e != nil {
 		opts.Sandbox = e.Sandbox
