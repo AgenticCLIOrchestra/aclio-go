@@ -1,5 +1,8 @@
-// Package claudeevent types the events in claude's stream-json output. For now
-// it covers the "assistant", "user" and "system" events. Each system
+// Package claudeevent types the events in claude's stream-json output: the
+// "assistant", "user" and "system" events. aclio-go decodes each claude stream
+// line with these types and hands the result to a stream.Handler as
+// stream.Event.Data; ParseAssistant, ParseUser and ParseSystem decode a raw
+// line directly. Each system
 // subtype seen so far has its own struct, and any other subtype decodes to
 // UnknownEvent rather than failing, because the CLI adds subtypes without
 // notice.

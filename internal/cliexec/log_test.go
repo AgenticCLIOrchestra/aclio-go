@@ -21,7 +21,7 @@ func TestLog(t *testing.T) {
 // treated as a format verb.
 func TestLogPrefixIsNotAFormat(t *testing.T) {
 	var buf bytes.Buffer
-	l := NewLogger(&buf, "codex", "100%s done")
+	l := NewLogger(&buf, "codex", "100%s done", nil)
 	Log(l, "[text] %s", "hi")
 	if got, want := buf.String(), "[codex] [100%s done] [text] hi\n"; got != want {
 		t.Errorf("Log wrote %q, want %q", got, want)
@@ -33,8 +33,8 @@ func TestNewLoggerUsesOwnWriter(t *testing.T) {
 	var global, own bytes.Buffer
 	SetLogWriter(&global)
 
-	Log(NewLogger(&own, "claude", ""), "[x]")
-	Log(NewLogger(nil, "claude", ""), "[y]")
+	Log(NewLogger(&own, "claude", "", nil), "[x]")
+	Log(NewLogger(nil, "claude", "", nil), "[y]")
 
 	if own.String() != "[claude] [x]\n" {
 		t.Errorf("own writer got %q", own.String())
@@ -50,7 +50,7 @@ func TestNewLoggerSnapshotsDefault(t *testing.T) {
 	t.Cleanup(func() { SetLogWriter(nil) })
 	var first, second bytes.Buffer
 	SetLogWriter(&first)
-	l := NewLogger(nil, "claude", "")
+	l := NewLogger(nil, "claude", "", nil)
 	SetLogWriter(&second)
 
 	Log(l, "[x]")
@@ -92,7 +92,7 @@ func TestConcurrentLoggersAndSetLogWriter(t *testing.T) {
 	for i := range runs {
 		bufs[i] = &syncBuffer{}
 		wg.Go(func() {
-			l := NewLogger(bufs[i], "claude", string(rune('a'+i)))
+			l := NewLogger(bufs[i], "claude", string(rune('a'+i)), nil)
 			for range lines {
 				Log(l, "[text] hi")
 			}
@@ -101,7 +101,7 @@ func TestConcurrentLoggersAndSetLogWriter(t *testing.T) {
 	wg.Go(func() {
 		for range lines {
 			SetLogWriter(io.Discard)
-			Log(NewLogger(nil, "codex", ""), "[x]")
+			Log(NewLogger(nil, "codex", "", nil), "[x]")
 			SetLogWriter(nil)
 		}
 	})

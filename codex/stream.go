@@ -17,8 +17,8 @@ type codexEvent struct {
 	Usage    *Usage          `json:"usage"`
 }
 
-// codexItem is the payload of an item.completed event. Only the fields we log
-// or return are decoded; the shape is otherwise left loose.
+// codexItem is the payload of an item.* event. Only the fields we log or
+// return are decoded; the shape is otherwise left loose.
 type codexItem struct {
 	ID      string `json:"id"`
 	Type    string `json:"type"`
@@ -34,36 +34,7 @@ func runStream(cmd *exec.Cmd, logEvents bool, logger cliexec.Logger) (*RunResult
 	result := &RunResult{}
 
 	err := cliexec.Stream(cmd, func(line string) {
-		var event codexEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			return
-		}
-
-		switch event.Type {
-		case "thread.started":
-			result.ThreadID = event.ThreadID
-			if logEvents {
-				cliexec.Log(logger, "[thread] %s", event.ThreadID)
-			}
-		case "turn.completed":
-			if event.Usage != nil {
-				result.Usage = *event.Usage
-			}
-		case "item.completed":
-			var item codexItem
-			if err := json.Unmarshal(event.Item, &item); err != nil {
-				return
-			}
-			handleItem(result, item, logEvents, logger)
-		case "error":
-			if logEvents {
-				cliexec.Log(logger, "[error] %s", cliexec.Truncate(line, 200))
-			}
-		default:
-			if logEvents {
-				cliexec.Log(logger, "[%s]", event.Type)
-			}
-		}
+		handleStreamLine(line, result, logEvents, logger)
 	})
 	if err != nil {
 		return nil, err
@@ -72,33 +43,78 @@ func runStream(cmd *exec.Cmd, logEvents bool, logger cliexec.Logger) (*RunResult
 	return result, nil
 }
 
-// handleItem records the final agent message and logs items of interest, led by
-// the logger's prefix.
-func handleItem(result *RunResult, item codexItem, logEvents bool, logger cliexec.Logger) {
-	switch item.Type {
-	case "agent_message":
-		// The last agent message is the agent's final answer.
-		result.FinalText = item.Text
-		if logEvents {
-			trimmed := strings.TrimSpace(item.Text)
-			if trimmed != "" {
-				cliexec.Log(logger, "[text] %s", cliexec.Truncate(trimmed, 200))
-			}
+// handleStreamLine parses one JSONL line, records what the run returns
+// (thread id, usage, final message) into result, and, when logEvents, renders
+// the line and emits it through the run's handler. The result is recorded
+// before the handler sees anything, so the handler can't affect it. A
+// malformed line, or an item.completed whose item is malformed, is skipped
+// silently and never reaches the handler. Split out from runStream so it can
+// be tested without spawning a process.
+func handleStreamLine(line string, result *RunResult, logEvents bool, logger cliexec.Logger) {
+	var event codexEvent
+	if err := json.Unmarshal([]byte(line), &event); err != nil {
+		return
+	}
+
+	var item codexItem
+	if strings.HasPrefix(event.Type, "item.") {
+		if err := json.Unmarshal(event.Item, &item); err != nil && event.Type == "item.completed" {
+			return
 		}
-	case "reasoning":
-		if logEvents {
-			trimmed := strings.TrimSpace(item.Text)
-			if trimmed != "" {
-				cliexec.Log(logger, "[reasoning] %s", cliexec.Truncate(trimmed, 200))
-			}
+	}
+
+	switch event.Type {
+	case "thread.started":
+		result.ThreadID = event.ThreadID
+	case "turn.completed":
+		if event.Usage != nil {
+			result.Usage = *event.Usage
 		}
-	case "command_execution":
-		if logEvents {
-			cliexec.Log(logger, "[command] %s", cliexec.Truncate(item.Command, 150))
+	case "item.completed":
+		if item.Type == "agent_message" {
+			// The last agent message is the agent's final answer.
+			result.FinalText = item.Text
 		}
+	}
+
+	if !logEvents {
+		return
+	}
+	cliexec.EmitStream(logger, event.Type, item.Type, line, nil, renderEvent(event, item, line, logger))
+}
+
+// renderEvent renders the log lines for one event.
+func renderEvent(event codexEvent, item codexItem, line string, logger cliexec.Logger) []string {
+	switch event.Type {
+	case "thread.started":
+		return []string{cliexec.Line(logger, "[thread] %s", event.ThreadID)}
+	case "turn.completed":
+		return nil
+	case "item.completed":
+		return renderItem(item, logger)
+	case "error":
+		return []string{cliexec.Line(logger, "[error] %s", cliexec.Truncate(line, 200))}
 	default:
-		if logEvents {
-			cliexec.Log(logger, "[item] [%s]", item.Type)
+		return []string{cliexec.Line(logger, "[%s]", event.Type)}
+	}
+}
+
+// renderItem renders the log lines for a completed item.
+func renderItem(item codexItem, logger cliexec.Logger) []string {
+	switch item.Type {
+	case "agent_message", "reasoning":
+		trimmed := strings.TrimSpace(item.Text)
+		if trimmed == "" {
+			return nil
 		}
+		tag := "[text]"
+		if item.Type == "reasoning" {
+			tag = "[reasoning]"
+		}
+		return []string{cliexec.Line(logger, "%s %s", tag, cliexec.Truncate(trimmed, 200))}
+	case "command_execution":
+		return []string{cliexec.Line(logger, "[command] %s", cliexec.Truncate(item.Command, 150))}
+	default:
+		return []string{cliexec.Line(logger, "[item] [%s]", item.Type)}
 	}
 }

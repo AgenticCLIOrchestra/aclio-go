@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-11-14
+
+### Added
+- Event handlers: every line aclio-go logs for a run now passes through an optional handler that returns the lines to write instead, so a consumer can rewrite lines (prefix included), drop them, or hold them back and write them later. Set one process-wide with `aclio.SetEventHandlerFactory`, or per call with `Request.EventHandlerFactory` (also `claude.RunOpts.EventHandlerFactory` / `codex.RunOpts.EventHandlerFactory`). Both take a factory, called once at the start of each run, so each run's handler keeps its own state and needs no locking. Like `LogWriter`, a per-call factory replaces the process-wide one, `Request.EventHandlerFactory` always comes from the `Request`, and a run keeps the factory it started with. The field is excluded from the settings debug dump. With no handler set, logging is unchanged
+- `stream` package with the handler types: `Handler`, `HandlerFactory`, `Event` and `Kind`. A run's events arrive in order: `KindStart` (the `[start]` line), one `KindStream` per parsed CLI stream line (only when `Stream` is set), `KindUsage` (the `[cache]` / `[usage]` line, when logged), and always exactly one `KindEnd`, last, even when the run fails. Each `Event` carries the lines aclio-go would write (`Lines`, prefix included), `Provider`, `Name` and `Prefix`, and for stream events `Type`, `Subtype` (for codex `item.*` events, the item's type), `Raw` and `Data`. What a run returns (result, session id, usage) is recorded before the handler sees a line, so a handler can't change it. Aliased from the root package as `aclio.Event`, `aclio.EventHandler` and `aclio.EventHandlerFactory`
+- `stream/claudeevent` package (previously internal): typed claude stream events (`AssistantEvent`, `UserEvent`, and the system events `InitEvent`, `PermissionDeniedEvent`, `TaskStartedEvent`, `TaskNotificationEvent`, `ThinkingTokensEvent` and `UnknownEvent`) with `ParseAssistant`, `ParseUser` and `ParseSystem`. For claude stream lines, `stream.Event.Data` holds the line already decoded into these types
+- `stream.Provider`, a string-based enum with `stream.ProviderClaude` and `stream.ProviderCodex`
+
+### Changed
+- `aclio.Provider` is now an alias of `stream.Provider`, and `aclio.Claude` / `aclio.Codex` are the same values as `stream.ProviderClaude` / `stream.ProviderCodex`, so they compare directly with `Event.Provider`. Existing code is unaffected; only reflection now reports the type as `stream.Provider`
+
 ## [0.11.3] - 2026-11-14
 
 ### Changed
@@ -127,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.12.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.3...v0.12.0
 [0.11.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.0...v0.11.1

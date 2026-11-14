@@ -25,6 +25,7 @@ go get github.com/agenticcliorchestra/aclio-go
 | `aclio` (root) | Provider-agnostic front door: pick a `Provider`, use one `Request`/`Result` and `Run` / `RunStructured[T]`, and it routes to the right CLI |
 | `claude`     | Controller for Claude Code (`claude -p`): single-shot and streaming runs, typed structured output, session resume, cache-metrics logging     |
 | `codex`      | Controller for Codex (`codex exec`): JSONL event parsing, schema-constrained structured output, sandbox modes, session resume                |
+| `stream`     | See, change, hold back or drop every log line a run writes, with claude's stream events decoded into typed structs (`stream/claudeevent`) |
 | `prompt`     | Substitute params into a prompt template with fail-fast render-time checking, rendering compact JSON for the model and indented JSON for debug dumps in one pass |
 | `jsonschema` | Generate a JSON Schema from any Go type via its `json` tags, build union schemas for discriminated payloads, and validate JSON against a schema |
 | `terminal`   | Raw-mode `ReadLine` with claude-code-like ergonomics: shift+enter inserts a newline, paste is verbatim, ctrl+c interrupts the read           |
@@ -61,7 +62,7 @@ triage, res, err := aclio.RunStructured[Triage](aclio.Request{
 })
 ```
 
-The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools` / `DisallowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once; `Request.LogWriter` (or `RunOpts.LogWriter` in the provider packages) sends one call's lines to its own writer instead, so concurrent calls don't have to share a sink. `SetLogWriter` is safe to call while runs are in flight. The CLI's own stderr (its warnings and errors) goes to `os.Stderr` unless `Request.Stderr` (or `RunOpts.Stderr`) sends it elsewhere.
+The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools` / `DisallowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once; `Request.LogWriter` (or `RunOpts.LogWriter` in the provider packages) sends one call's lines to its own writer instead, so concurrent calls don't have to share a sink. `SetLogWriter` is safe to call while runs are in flight. The CLI's own stderr (its warnings and errors) goes to `os.Stderr` unless `Request.Stderr` (or `RunOpts.Stderr`) sends it elsewhere. To change what gets logged rather than where, use an event handler; see [stream](#stream).
 
 When you need full control, drop to the provider package directly — the root layer is a thin router over them, not a wall.
 
@@ -198,6 +199,35 @@ err := jsonschema.ValidateValue(schemaJSON, value)  // any Go value, marshalled 
 ```
 
 Backed by [santhosh-tekuri/jsonschema](https://github.com/santhosh-tekuri/jsonschema) (draft 2020-12). `nil` means valid.
+
+## stream
+
+Every line aclio-go logs for a run first passes through an optional event handler, which returns the lines to write instead. It can rewrite them (prefix included), drop them, or hold them back and write them later. Without a handler, logging is exactly as described above.
+
+```go
+// Keep only the latest of a run of thinking_tokens ticks.
+func squashThinking() aclio.EventHandler {
+    var held []string
+    return func(e aclio.Event) []string {
+        if _, ok := e.Data.(claudeevent.ThinkingTokensEvent); ok {
+            held = e.Lines
+            return nil
+        }
+        out := slices.Concat(held, e.Lines) // on the final KindEnd event, e.Lines is empty: this flushes
+        held = nil
+        return out
+    }
+}
+
+aclio.SetEventHandlerFactory(squashThinking)                       // every run
+aclio.Run(aclio.Request{EventHandlerFactory: squashThinking, ...}) // one call (also claude.RunOpts / codex.RunOpts.EventHandlerFactory)
+```
+
+- **One handler per run.** You pass a factory, called once at the start of each run, so each run's handler keeps its own state and needs no locking. The factory may be called by concurrent runs.
+- **Events, in order:** `KindStart` (the `[start]` line), a `KindStream` for each parsed CLI stream line (only when `Stream` is set), `KindUsage` (the `[cache]` / `[usage]` line, when it's logged), and always exactly one `KindEnd`, last, even when the run fails.
+- **What an event carries:** `Lines` (exactly what aclio-go would write, prefix included; return them to keep the default), `Provider`, `Name` and `Prefix`, and for stream events `Type`, `Subtype` (for codex `item.*` events, the item's type), `Raw` (the whole line) and, for claude, `Data`: the line decoded into a `claudeevent` type (`AssistantEvent`, `UserEvent`, or a system event such as `InitEvent`, `ThinkingTokensEvent`, `PermissionDeniedEvent` or `UnknownEvent`).
+- **What it can't do:** change what a run returns. The result, session id and usage are recorded before the handler sees a line. Lines that aren't valid JSON never reach it.
+- A panic in a handler isn't recovered. `SetEventHandlerFactory` is safe to call while runs are in flight; a run keeps the handler it started with.
 
 ## terminal
 

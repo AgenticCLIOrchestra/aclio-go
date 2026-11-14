@@ -15,8 +15,10 @@
 //	})
 //
 // Logging (a process-wide sink via SetLogWriter, or a per-call
-// Request.LogWriter), the ctrl+c behavior, and structured-output schema
-// generation are shared across providers.
+// Request.LogWriter, with every line passing through an optional event
+// handler from SetEventHandlerFactory or Request.EventHandlerFactory), the
+// ctrl+c behavior, and structured-output schema generation are shared across
+// providers.
 package aclio
 
 import (
@@ -27,6 +29,7 @@ import (
 	"github.com/agenticcliorchestra/aclio-go/codex"
 	"github.com/agenticcliorchestra/aclio-go/internal/cliexec"
 	"github.com/agenticcliorchestra/aclio-go/jsonschema"
+	"github.com/agenticcliorchestra/aclio-go/stream"
 )
 
 // ErrInterrupted is returned (wrapped) by Run / RunStructured when SIGINT or
@@ -35,12 +38,13 @@ import (
 // errors.Is(err, aclio.ErrInterrupted).
 var ErrInterrupted = cliexec.ErrInterrupted
 
-// Provider selects which agentic CLI backs a request.
-type Provider string
+// Provider selects which agentic CLI backs a request. It is the same type as
+// stream.Provider, so it compares directly with Event.Provider.
+type Provider = stream.Provider
 
 const (
-	Claude Provider = "claude"
-	Codex  Provider = "codex"
+	Claude = stream.ProviderClaude
+	Codex  = stream.ProviderCodex
 )
 
 // SetLogWriter sets the process-wide log sink (default os.Stderr) used by
@@ -50,11 +54,31 @@ const (
 // flight; a run already in progress keeps the writer it started with.
 func SetLogWriter(w io.Writer) { cliexec.SetLogWriter(w) }
 
+// Event is one thing aclio-go is about to log for a run; see the stream
+// package.
+type Event = stream.Event
+
+// EventHandler gets every Event of one run and returns the lines to log for
+// it; see the stream package.
+type EventHandler = stream.Handler
+
+// EventHandlerFactory returns a fresh EventHandler for one run; see the stream
+// package.
+type EventHandlerFactory = stream.HandlerFactory
+
+// SetEventHandlerFactory sets the process-wide event handler factory used by
+// every call that doesn't set its own Request.EventHandlerFactory, including
+// direct calls into the claude and codex packages. The factory is called once
+// at the start of each run. nil clears it, so lines are logged as they are. It
+// is safe to call while runs are in flight; a run already in progress keeps
+// the handler it started with.
+func SetEventHandlerFactory(h EventHandlerFactory) { cliexec.SetEventHandlerFactory(h) }
+
 // Request is a provider-agnostic invocation. The common fields map to each
 // provider's equivalent; provider-specific extras ride along in ClaudeOpts /
 // CodexOpts (only the non-shared fields of those are consulted — Prompt,
-// Model, schema, resume id, name, streaming, the log writer and stderr always
-// come from this Request).
+// Model, schema, resume id, name, streaming, the log writer, stderr and the
+// event handler always come from this Request).
 type Request struct {
 	Provider Provider
 	Dir      string
@@ -80,6 +104,11 @@ type Request struct {
 	// library's log lines). nil means os.Stderr. A writer shared between
 	// concurrent calls must be safe for concurrent use.
 	Stderr io.Writer
+	// EventHandlerFactory is called once at the start of this call and
+	// returns the handler that sees, and may change, every line logged for it
+	// (see the stream package). nil uses the process-wide factory set by
+	// SetEventHandlerFactory; if neither is set, lines are logged as they are.
+	EventHandlerFactory EventHandlerFactory
 
 	// ClaudeOpts supplies Claude-only extras (AllowedTools, DisallowedTools,
 	// SystemPromptFile, MaxTurns, ForkSession, TempDir). Consulted only when
@@ -169,14 +198,15 @@ func claudeOpts(req Request) claude.RunOpts {
 		model = claude.Default
 	}
 	opts := claude.RunOpts{
-		Prompt:          req.Prompt,
-		JsonSchema:      req.JSONSchema,
-		Name:            req.Name,
-		ModelID:         model,
-		Stream:          req.Stream,
-		ResumeSessionID: req.ResumeID,
-		LogWriter:       req.LogWriter,
-		Stderr:          req.Stderr,
+		Prompt:              req.Prompt,
+		JsonSchema:          req.JSONSchema,
+		Name:                req.Name,
+		ModelID:             model,
+		Stream:              req.Stream,
+		ResumeSessionID:     req.ResumeID,
+		LogWriter:           req.LogWriter,
+		Stderr:              req.Stderr,
+		EventHandlerFactory: req.EventHandlerFactory,
 	}
 	if e := req.ClaudeOpts; e != nil {
 		opts.AllowedTools = e.AllowedTools
@@ -193,14 +223,15 @@ func claudeOpts(req Request) claude.RunOpts {
 // Codex-only extras from req.CodexOpts when present.
 func codexOpts(req Request) codex.RunOpts {
 	opts := codex.RunOpts{
-		Prompt:          req.Prompt,
-		OutputSchema:    req.JSONSchema,
-		Name:            req.Name,
-		Model:           req.Model,
-		Stream:          req.Stream,
-		ResumeSessionID: req.ResumeID,
-		LogWriter:       req.LogWriter,
-		Stderr:          req.Stderr,
+		Prompt:              req.Prompt,
+		OutputSchema:        req.JSONSchema,
+		Name:                req.Name,
+		Model:               req.Model,
+		Stream:              req.Stream,
+		ResumeSessionID:     req.ResumeID,
+		LogWriter:           req.LogWriter,
+		Stderr:              req.Stderr,
+		EventHandlerFactory: req.EventHandlerFactory,
 	}
 	if e := req.CodexOpts; e != nil {
 		opts.Sandbox = e.Sandbox

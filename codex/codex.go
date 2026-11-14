@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/agenticcliorchestra/aclio-go/internal/cliexec"
+	"github.com/agenticcliorchestra/aclio-go/stream"
 )
 
 // ErrInterrupted is returned (wrapped) by Run when SIGINT/SIGTERM arrives while
@@ -77,6 +78,12 @@ type RunOpts struct {
 	// not the [codex] log lines). nil means os.Stderr. A writer shared between
 	// concurrent calls must be safe for concurrent use.
 	Stderr io.Writer `json:"-"`
+	// EventHandlerFactory is called once at the start of this call and
+	// returns the handler that sees, and may change, every line logged for it
+	// (see the stream package). nil uses the process-wide factory (see
+	// aclio.SetEventHandlerFactory); if neither is set, lines are logged as
+	// they are.
+	EventHandlerFactory stream.HandlerFactory `json:"-"`
 }
 
 // Run invokes `codex exec` in absDir and returns the agent's final message
@@ -101,7 +108,8 @@ func Run(absDir string, opts RunOpts) (string, *RunResult, error) {
 		return "", nil, err
 	}
 
-	logger := cliexec.NewLogger(opts.LogWriter, "codex", opts.Name)
+	logger := cliexec.NewLogger(opts.LogWriter, stream.ProviderCodex, opts.Name, opts.EventHandlerFactory)
+	defer cliexec.End(logger)
 	logStart(opts, logger)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
@@ -211,7 +219,8 @@ func logStart(opts RunOpts, logger cliexec.Logger) {
 	if model == "" {
 		model = "default"
 	}
-	cliexec.Log(logger, "[start] op=%s model=%s prompt_chars=%d", op, model, len(opts.Prompt))
+	cliexec.Emit(logger, stream.Event{Kind: stream.KindStart},
+		[]string{cliexec.Line(logger, "[start] op=%s model=%s prompt_chars=%d", op, model, len(opts.Prompt))})
 }
 
 // logUsage writes one greppable [usage] line per call (the logger's prefix is "[codex]" or
@@ -228,6 +237,7 @@ func logUsage(logger cliexec.Logger, name string, r *RunResult) {
 	if u.InputTokens == 0 && u.OutputTokens == 0 && u.CachedInputTokens == 0 {
 		return
 	}
-	cliexec.Log(logger, "[usage] op=%s in=%d out=%d cached=%d reasoning=%d",
-		op, u.InputTokens, u.OutputTokens, u.CachedInputTokens, u.ReasoningOutputTokens)
+	cliexec.Emit(logger, stream.Event{Kind: stream.KindUsage}, []string{cliexec.Line(logger,
+		"[usage] op=%s in=%d out=%d cached=%d reasoning=%d",
+		op, u.InputTokens, u.OutputTokens, u.CachedInputTokens, u.ReasoningOutputTokens)})
 }
