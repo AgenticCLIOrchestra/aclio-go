@@ -1,5 +1,5 @@
 // Package claudeevent types the events in claude's stream-json output. For now
-// it covers the "assistant" events and the "system" events. Each system
+// it covers the "assistant", "user" and "system" events. Each system
 // subtype seen so far has its own struct, and any other subtype decodes to
 // UnknownEvent rather than failing, because the CLI adds subtypes without
 // notice.

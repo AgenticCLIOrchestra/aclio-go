@@ -52,8 +52,12 @@ func handleStreamLine(line string, lastResult *string, logger cliexec.Logger) {
 		printAssistantEvent(msg, logger)
 	case "result":
 		*lastResult = line
-	case "user":
-		printUserEvent(event, logger)
+	case claudeevent.TypeUser:
+		msg, err := claudeevent.ParseUser([]byte(line))
+		if err != nil {
+			return // a message that doesn't match the expected shape is skipped, as before
+		}
+		printUserEvent(msg, logger)
 	case claudeevent.TypeSystem:
 		sys, err := claudeevent.ParseSystem([]byte(line))
 		if err != nil {
@@ -75,9 +79,8 @@ func handleStreamLine(line string, lastResult *string, logger cliexec.Logger) {
 }
 
 type streamEvent struct {
-	Type    string          `json:"type"`
-	Subtype string          `json:"subtype"`
-	Message json.RawMessage `json:"message"`
+	Type    string `json:"type"`
+	Subtype string `json:"subtype"`
 }
 
 // printSystemEvent logs a system event. The init handshake is pure noise, so
@@ -92,23 +95,9 @@ func printSystemEvent(event claudeevent.System, raw string, logger cliexec.Logge
 	}
 }
 
-type userMessage struct {
-	Role    string `json:"role"`
-	Content []struct {
-		Type      string `json:"type"`
-		Content   string `json:"content"`
-		IsError   bool   `json:"is_error"`
-		ToolUseId string `json:"tool_use_id"`
-	} `json:"content"`
-}
-
-func printUserEvent(event streamEvent, logger cliexec.Logger) {
-	var msg userMessage
-	if err := json.Unmarshal(event.Message, &msg); err != nil {
-		return
-	}
-	for _, block := range msg.Content {
-		if block.Type == "tool_result" && block.IsError {
+func printUserEvent(event claudeevent.UserEvent, logger cliexec.Logger) {
+	for _, block := range event.Message.Content {
+		if block.Type == claudeevent.BlockToolResult && block.IsError {
 			// Truncate: a denied Bash call can carry kilobytes of output, and one
 			// screen-flooding line breaks the scannable-stream contract.
 			cliexec.Log(logger, "[tool] [denied] %s", cliexec.Truncate(strings.TrimSpace(block.Content), 200))
