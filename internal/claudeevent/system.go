@@ -1,7 +1,8 @@
 // Package claudeevent types the events in claude's stream-json output. For now
-// it covers the "system" events: the subtypes seen so far each have their own
-// struct, and any other subtype decodes to UnknownEvent rather than failing,
-// because the CLI adds subtypes without notice.
+// it covers the "assistant" events and the "system" events. Each system
+// subtype seen so far has its own struct, and any other subtype decodes to
+// UnknownEvent rather than failing, because the CLI adds subtypes without
+// notice.
 //
 // String fields whose values form a set (a task's status, an MCP server's
 // status, the permission mode, …) stay plain strings: only one or two values
