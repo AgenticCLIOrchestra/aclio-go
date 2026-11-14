@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/agenticcliorchestra/aclio-go/internal/claudeevent"
 	"github.com/agenticcliorchestra/aclio-go/internal/cliexec"
 )
 
@@ -49,8 +50,15 @@ func handleStreamLine(line string, lastResult *string, logger cliexec.Logger) {
 		*lastResult = line
 	case "user":
 		printUserEvent(event, logger)
-	case "system":
-		printSystemEvent(event, line, logger)
+	case claudeevent.TypeSystem:
+		sys, err := claudeevent.ParseSystem([]byte(line))
+		if err != nil {
+			// A known subtype whose fields don't match its struct: log it raw,
+			// as for any other system event, rather than lose it.
+			cliexec.Log(logger, "[system] %s", line)
+			return
+		}
+		printSystemEvent(sys, line, logger)
 	default:
 		// Unrecognised event: keep the subtype when the CLI provides one, so a
 		// future event type is at least self-describing in the logs.
@@ -71,12 +79,13 @@ type streamEvent struct {
 // printSystemEvent logs a system event. The init handshake is pure noise, so
 // it collapses to a marker; anything else (e.g. rate_limit_event) is dumped
 // raw so nothing is silently lost.
-func printSystemEvent(event streamEvent, raw string, logger cliexec.Logger) {
-	if event.Subtype == "init" {
+func printSystemEvent(event claudeevent.System, raw string, logger cliexec.Logger) {
+	switch event.(type) {
+	case claudeevent.InitEvent:
 		cliexec.Log(logger, "[system] init")
-		return
+	default:
+		cliexec.Log(logger, "[system] %s", raw)
 	}
-	cliexec.Log(logger, "[system] %s", raw)
 }
 
 type userMessage struct {
