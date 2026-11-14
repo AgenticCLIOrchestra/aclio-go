@@ -115,6 +115,43 @@ func TestStderrMapping(t *testing.T) {
 	}
 }
 
+// EventHandlerFactory is a shared field too: it always comes from the Request. Funcs
+// can't be compared, so each factory's handler answers with its own marker.
+func TestEventHandlerFactoryMapping(t *testing.T) {
+	marker := func(s string) EventHandlerFactory {
+		return func() EventHandler {
+			return func(Event) []string { return []string{s} }
+		}
+	}
+	answer := func(h EventHandlerFactory) string { return h()(Event{})[0] }
+
+	c := claudeOpts(Request{Provider: Claude, EventHandlerFactory: marker("req"), ClaudeOpts: &claude.RunOpts{EventHandlerFactory: marker("extra")}})
+	if c.EventHandlerFactory == nil || answer(c.EventHandlerFactory) != "req" {
+		t.Error("claude: EventHandlerFactory not taken from Request")
+	}
+	x := codexOpts(Request{Provider: Codex, EventHandlerFactory: marker("req"), CodexOpts: &codex.RunOpts{EventHandlerFactory: marker("extra")}})
+	if x.EventHandlerFactory == nil || answer(x.EventHandlerFactory) != "req" {
+		t.Error("codex: EventHandlerFactory not taken from Request")
+	}
+
+	if claudeOpts(Request{Provider: Claude}).EventHandlerFactory != nil || codexOpts(Request{Provider: Codex}).EventHandlerFactory != nil {
+		t.Error("an unset Request.EventHandlerFactory must stay nil so the process-wide handler is used")
+	}
+}
+
+func TestSetEventHandlerFactory(t *testing.T) {
+	t.Cleanup(func() { SetEventHandlerFactory(nil) })
+
+	SetEventHandlerFactory(func() EventHandler { return nil })
+	if cliexec.DefaultEventHandlerFactory() == nil {
+		t.Error("SetEventHandlerFactory did not set the process-wide handler")
+	}
+	SetEventHandlerFactory(nil)
+	if cliexec.DefaultEventHandlerFactory() != nil {
+		t.Error("SetEventHandlerFactory(nil) should clear the process-wide handler")
+	}
+}
+
 func TestSetLogWriter(t *testing.T) {
 	t.Cleanup(func() { SetLogWriter(nil) })
 

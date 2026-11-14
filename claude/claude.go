@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/agenticcliorchestra/aclio-go/internal/cliexec"
+	"github.com/agenticcliorchestra/aclio-go/stream"
 )
 
 // ErrInterrupted is returned (wrapped) by Run when SIGINT/SIGTERM arrives while
@@ -78,6 +79,12 @@ type RunOpts struct {
 	// not the [claude] log lines). nil means os.Stderr. A writer shared between
 	// concurrent calls must be safe for concurrent use.
 	Stderr io.Writer `json:"-"`
+	// EventHandlerFactory is called once at the start of this call and
+	// returns the handler that sees, and may change, every line logged for it
+	// (see the stream package). nil uses the process-wide factory (see
+	// aclio.SetEventHandlerFactory); if neither is set, lines are logged as
+	// they are.
+	EventHandlerFactory stream.HandlerFactory `json:"-"`
 }
 
 // Run invokes the claude CLI in absDir and returns its result blob (JSON in
@@ -96,7 +103,8 @@ func Run(absDir string, opts RunOpts) (string, error) {
 		return "", err
 	}
 
-	logger := cliexec.NewLogger(opts.LogWriter, "claude", opts.Name)
+	logger := cliexec.NewLogger(opts.LogWriter, stream.ProviderClaude, opts.Name, opts.EventHandlerFactory)
+	defer cliexec.End(logger)
 	logStart(opts, logger)
 	debugSettings(opts.TempDir, stamp, opts)
 	debugPrompt(opts.TempDir, stamp, opts.Name, opts.Prompt)
@@ -190,7 +198,8 @@ func logStart(opts RunOpts, logger cliexec.Logger) {
 	if op == "" {
 		op = "unnamed"
 	}
-	cliexec.Log(logger, "[start] op=%s model=%s prompt_chars=%d", op, opts.ModelID, len(opts.Prompt))
+	cliexec.Emit(logger, stream.Event{Kind: stream.KindStart},
+		[]string{cliexec.Line(logger, "[start] op=%s model=%s prompt_chars=%d", op, opts.ModelID, len(opts.Prompt))})
 }
 
 // logCacheMetrics writes one greppable [cache] line per call (the logger's prefix is
@@ -217,7 +226,8 @@ func logCacheMetrics(logger cliexec.Logger, name, output string, runErr error) {
 		u.CacheReadInputTokens == 0 && u.CacheCreationInputTokens == 0 {
 		return
 	}
-	cliexec.Log(logger, "[cache] op=%s in=%d out=%d cache_read=%d cache_write=%d 1h=%d 5m=%d cost_usd=%.4f",
+	cliexec.Emit(logger, stream.Event{Kind: stream.KindUsage}, []string{cliexec.Line(logger,
+		"[cache] op=%s in=%d out=%d cache_read=%d cache_write=%d 1h=%d 5m=%d cost_usd=%.4f",
 		op,
 		u.InputTokens,
 		u.OutputTokens,
@@ -226,5 +236,5 @@ func logCacheMetrics(logger cliexec.Logger, name, output string, runErr error) {
 		u.CacheCreation.Ephemeral1hInputTokens,
 		u.CacheCreation.Ephemeral5mInputTokens,
 		parsed.TotalCostUSD,
-	)
+	)})
 }
