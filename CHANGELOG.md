@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-11-14
+
+### Changed
+- Claude stream `user` events are now parsed into typed events internally, so `assistant`, `user` and `system` events are all typed. No public API changes, and log output is unchanged
+
 ## [0.11.2] - 2026-11-14
 
 ### Changed
@@ -122,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.11.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.10.0...v0.11.0
