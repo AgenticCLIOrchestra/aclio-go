@@ -44,8 +44,12 @@ func handleStreamLine(line string, lastResult *string, logger cliexec.Logger) {
 		return
 	}
 	switch event.Type {
-	case "assistant":
-		printAssistantEvent(event, logger)
+	case claudeevent.TypeAssistant:
+		msg, err := claudeevent.ParseAssistant([]byte(line))
+		if err != nil {
+			return // a message that doesn't match the expected shape is skipped, as before
+		}
+		printAssistantEvent(msg, logger)
 	case "result":
 		*lastResult = line
 	case "user":
@@ -112,35 +116,20 @@ func printUserEvent(event streamEvent, logger cliexec.Logger) {
 	}
 }
 
-type assistantMessage struct {
-	Type    string `json:"type"`
-	Content []struct {
-		Type     string `json:"type"`
-		Text     string `json:"text"`
-		Name     string `json:"name"`
-		Input    any    `json:"input"`
-		Thinking string `json:"thinking"`
-	} `json:"content"`
-}
-
-func printAssistantEvent(event streamEvent, logger cliexec.Logger) {
-	var msg assistantMessage
-	if err := json.Unmarshal(event.Message, &msg); err != nil {
-		return
-	}
-	for _, block := range msg.Content {
+func printAssistantEvent(event claudeevent.AssistantEvent, logger cliexec.Logger) {
+	for _, block := range event.Message.Content {
 		switch block.Type {
-		case "thinking":
+		case claudeevent.BlockThinking:
 			trimmed := strings.TrimSpace(block.Thinking)
 			if trimmed != "" {
 				cliexec.Log(logger, "[thinking] %s", cliexec.Truncate(trimmed, 200))
 			}
-		case "text":
+		case claudeevent.BlockText:
 			trimmed := strings.TrimSpace(block.Text)
 			if trimmed != "" {
 				cliexec.Log(logger, "[text] %s", cliexec.Truncate(trimmed, 200))
 			}
-		case "tool_use":
+		case claudeevent.BlockToolUse:
 			if summary := formatToolInput(block.Name, block.Input); summary != "" {
 				cliexec.Log(logger, "[tool] [%s] %s", block.Name, summary)
 				continue
