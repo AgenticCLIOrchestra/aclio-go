@@ -22,6 +22,8 @@ func TestHandleStreamLineRendering(t *testing.T) {
 	big := strings.Repeat("x", 250)
 	bigDenied := strings.Repeat("y", 250)
 	sysOther := `{"type":"system","subtype":"rate_limit_event"}`
+	sysThinking := `{"type":"system","subtype":"thinking_tokens","estimated_tokens":300,"estimated_tokens_delta":100}`
+	sysBadInit := `{"type":"system","subtype":"init","tools":"not a list"}`
 
 	cases := []struct {
 		name string
@@ -107,6 +109,16 @@ func TestHandleStreamLineRendering(t *testing.T) {
 			"system other subtype passes through raw",
 			sysOther,
 			"[claude] [system] " + sysOther,
+		},
+		{
+			"system known subtype passes through raw",
+			sysThinking,
+			"[claude] [system] " + sysThinking,
+		},
+		{
+			"system known subtype with mismatched fields passes through raw",
+			sysBadInit,
+			"[claude] [system] " + sysBadInit,
 		},
 		{
 			"unknown type without subtype",
