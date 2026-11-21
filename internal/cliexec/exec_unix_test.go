@@ -215,7 +215,12 @@ func TestGracefulInterruptNoSigkill(t *testing.T) {
 	defer swapInterruptChan(injected)()
 
 	dir := t.TempDir()
-	cmd := Command(dir, "sh", []string{"-c", "trap 'exit 0' INT; touch ready; sleep 60"}, nil)
+	// sleep runs in the background and sh waits on it: a trapped signal cuts a
+	// `wait` short at once. With sleep in the foreground instead, a SIGINT
+	// landing between its fork and exec is caught by the trap handler the
+	// child inherited, then lost at exec, so sh sat waiting out the grace
+	// window and got SIGKILLed — a flake, mostly under -race.
+	cmd := Command(dir, "sh", []string{"-c", "sleep 60 & trap 'kill $! 2>/dev/null; exit 0' INT; touch ready; wait"}, nil)
 	done := make(chan error, 1)
 	go func() {
 		_, err := Capture(cmd)
