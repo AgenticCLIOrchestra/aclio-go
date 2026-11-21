@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-11-21
+
+### Added
+- Multi-turn sessions, whatever the provider: `aclio.StartSession(req)`, `aclio.Send`, `aclio.SendStructured[T]`, `aclio.Interrupt`, `aclio.SessionID` and `aclio.CloseSession`, with `aclio.ErrSessionEnded`. The `Request` configures every turn (its `Prompt` must be empty); `ResumeID` picks up an existing conversation. `Result.CostUSD` and the token counts are each turn's own, so they add up across turns. With Claude, the session is one long-lived `claude` process, so later turns skip the process start and transcript reload a resumed `Run` pays; the structured output schema is fixed for the session (`Request.JSONSchema`, or the one the first `SendStructured` generates), and if the process dies, the next turn resumes the conversation in a new one, sending a turn the death cut short once more. With Codex, every turn is a `Run` resuming the previous thread, and `Interrupt` isn't supported
+- `claude.Start(dir, opts)`, `claude.Send`, `claude.SendStructured[T]`, `claude.Interrupt`, `claude.SessionID` and `claude.Close`: one long-lived claude CLI process driven over stream-json (`--input-format stream-json`). Each turn is logged and dumped like one `Run`, with its own `[start]` and `[cache]` lines and debug files. `claude.ErrSessionBusy` refuses a concurrent `Send`; `claude.ErrSessionEnded` reports the process is gone. On ctrl+c during `Send`, the CLI is asked to stop the turn and the session stays usable; it is killed if it doesn't stop within the grace window or on a second ctrl+c. Control requests from the CLI are refused, since sessions register no hooks or permission callbacks
+- `claude.RunResult.TerminalReason` (how the turn ended, e.g. `completed` or `aborted_*`), `Errors` (the CLI's raw error detail on a failed result) and `TurnCostUSD` (a session turn's own cost; the CLI's `TotalCostUSD` is the session's running total there, and the `[cache]` line's `cost_usd` is the turn's)
+
 ## [0.12.0] - 2026-11-14
 
 ### Added
@@ -138,6 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terminal` package — raw-mode `ReadLine` with claude-code-like ergonomics: enter sends, shift+enter inserts a newline (kitty keyboard protocol and xterm modifyOtherKeys), bracketed paste inserted verbatim, ctrl+c returns `ErrInterrupted` instead of killing the process, plain buffered fallback for non-TTY stdin
 - CI: PR checks (Go build + test, changelog and version validation) and a post-merge release pipeline (git tag, GitHub release with the version's changelog entry, Go proxy trigger)
 
+[0.13.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.3...v0.12.0
 [0.11.3]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/AgenticCLIOrchestra/aclio-go/compare/v0.11.1...v0.11.2

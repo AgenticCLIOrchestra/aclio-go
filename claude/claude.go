@@ -219,6 +219,16 @@ func logCacheMetrics(logger cliexec.Logger, name, output string, runErr error) {
 	if err != nil {
 		return
 	}
+	logUsage(logger, op, parsed, parsed.TotalCostUSD)
+}
+
+// logUsage writes the [cache] line for one parsed result, with cost as the
+// cost_usd: the call's for Run, the turn's for a session's Send.
+func logUsage(logger cliexec.Logger, name string, parsed *RunResult, cost float64) {
+	op := name
+	if op == "" {
+		op = "unnamed"
+	}
 	u := parsed.Usage
 	// A zero-usage result usually means we parsed an event that isn't the
 	// CLI's result blob (shouldn't happen in either mode, but harmless).
@@ -235,6 +245,6 @@ func logCacheMetrics(logger cliexec.Logger, name, output string, runErr error) {
 		u.CacheCreationInputTokens,
 		u.CacheCreation.Ephemeral1hInputTokens,
 		u.CacheCreation.Ephemeral5mInputTokens,
-		parsed.TotalCostUSD,
+		cost,
 	)})
 }
