@@ -21,6 +21,15 @@ type RunResult struct {
 	StructuredOutput map[string]any `json:"structured_output"`
 	Usage            Usage          `json:"usage"`
 	UUID             string         `json:"uuid"`
+	// TerminalReason says how the turn ended, e.g. "completed", or an
+	// "aborted_*" value when it was interrupted.
+	TerminalReason string `json:"terminal_reason"`
+	// Errors is the CLI's own error detail on a failed result, kept raw.
+	Errors json.RawMessage `json:"errors,omitempty"`
+	// TurnCostUSD is the cost of this turn alone. Set by Send and
+	// SendStructured, where TotalCostUSD is the session's running total; zero
+	// from Run, where TotalCostUSD is already the one call's cost.
+	TurnCostUSD float64 `json:"-"`
 }
 
 // Usage mirrors the relevant fields from the CLI's `usage` block in the

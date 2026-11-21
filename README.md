@@ -64,6 +64,26 @@ triage, res, err := aclio.RunStructured[Triage](aclio.Request{
 
 The `Request` common fields (`Prompt`, `Model`, `ResumeID`, `Name`, `Stream`, `JSONSchema`) map to each provider's equivalent. Provider-only knobs ride along without leaving this layer via `Request.ClaudeOpts` / `Request.CodexOpts` (only their *non-shared* fields are consulted — e.g. Claude `AllowedTools` / `DisallowedTools`, Codex `Sandbox`). `aclio.SetLogWriter(w)` redirects logging for every provider at once; `Request.LogWriter` (or `RunOpts.LogWriter` in the provider packages) sends one call's lines to its own writer instead, so concurrent calls don't have to share a sink. `SetLogWriter` is safe to call while runs are in flight. The CLI's own stderr (its warnings and errors) goes to `os.Stderr` unless `Request.Stderr` (or `RunOpts.Stderr`) sends it elsewhere. To change what gets logged rather than where, use an event handler; see [stream](#stream).
 
+### Sessions
+
+A session is one conversation over many turns, whatever the provider:
+
+```go
+s, err := aclio.StartSession(aclio.Request{Provider: aclio.Claude, Dir: "/abs/workdir"})
+defer aclio.CloseSession(s)
+
+res, err := aclio.Send(s, "Read the failing test.")
+triage, res, err := aclio.SendStructured[Triage](s, "Now triage it.")
+// res.CostUSD and the token counts are this turn's own, so they add up across turns
+```
+
+The `Request` configures every turn; its `Prompt` must be empty, since prompts go to `Send`. `ResumeID` picks up an existing conversation (`ClaudeOpts.ForkSession` forks it), and `aclio.SessionID(s)` gives the conversation's id so far, for a later `ResumeID`. Nothing is launched until the first turn.
+
+- **Claude:** the session is one long-lived `claude` process spoken to over stream-json, so later turns skip the process start and transcript reload a resumed `Run` pays. The structured output schema is fixed for the whole session: `Request.JSONSchema` if set, otherwise the one the first `SendStructured` generates from its type. If the process dies, the next turn starts a new one resuming the conversation, and a turn the death cut short is sent once more. `aclio.Interrupt(s)` stops the turn in flight without a signal, from any goroutine.
+- **Codex:** every turn is a `Run` resuming the previous turn's thread, so a session behaves exactly like chained `Run`s. `Interrupt` returns an error, since Codex can only stop a turn by ending its process.
+
+After `CloseSession` (which waits for a turn in flight), `Send` returns an error wrapping `aclio.ErrSessionEnded`.
+
 When you need full control, drop to the provider package directly — the root layer is a thin router over them, not a wall.
 
 ## claude
@@ -94,6 +114,23 @@ triage, result, err := claude.RunStructured[Triage]("/abs/workdir", claude.RunOp
 ```
 
 `RunStructured` generates the schema from `Triage` (unless `RunOpts.JsonSchema` is set — do that when the schema can't be derived from the type, e.g. discriminated unions behind interface fields), passes it via `--json-schema`, and decodes `structured_output` into the struct. Already holding a result blob? `claude.ParseStructured[Triage](out)` is the decode half on its own.
+
+#### Sessions
+
+`claude.Start(dir, opts)` launches one long-lived `claude` process (`--input-format stream-json`) that runs many turns:
+
+```go
+s, err := claude.Start("/abs/workdir", claude.RunOpts{Name: "triage", ModelID: claude.Sonnet})
+defer claude.Close(s)
+
+out, err := claude.Send(s, "Read the failing test.")                     // the turn's result line, as Run returns
+triage, result, err := claude.SendStructured[Triage](s, "Now triage it.") // schema: RunOpts.JsonSchema given to Start
+// result.TurnCostUSD is this turn's cost; result.TotalCostUSD is the session's running total
+```
+
+`opts` configures the whole session as it would one `Run` (model, `JsonSchema` for every turn, tools, system prompt file, `MaxTurns` per turn, `ResumeSessionID` / `ForkSession`, and the log writer, stderr, event handler factory and `TempDir` used by each turn); `Prompt` must be empty and `Stream` is implied. Each turn is logged and dumped like one `Run`: a `[start]` line, the stream events, a `[cache]` line with the turn's own cost, and debug files under its own stamp. One turn runs at a time: a concurrent `Send` returns `claude.ErrSessionBusy`. A turn the CLI reports as failed is an error, with the CLI's detail from `RunResult.Errors`; `RunResult.TerminalReason` says how a turn ended.
+
+`claude.Interrupt(s)` asks the CLI to stop the turn in flight (safe from another goroutine); the interrupted `Send` returns an error wrapping `ErrInterrupted` and the session stays usable. `claude.SessionID(s)` is the conversation's id, for `ResumeSessionID`. Once the process is gone (it exited, was killed, or `Close` ran), `Send` returns an error wrapping `claude.ErrSessionEnded`; to carry on, `Start` a new session resuming `SessionID(s)`. `Close` closes the CLI's stdin so it finishes a turn in flight and exits, escalating to SIGINT and then SIGKILL if it takes too long.
 
 Set `RunOpts.TempDir` to dump each call's settings/prompt/output/error for debugging — files are named `{stamp}-{name}-{kind}` with one millisecond-precise stamp per call, so repeated calls never overwrite each other and `ls` lists them chronologically.
 
@@ -244,6 +281,8 @@ Runs the terminal in raw mode for the duration of one submission: enter sends, s
 ## Interrupts
 
 Agentic CLIs grab the controlling terminal even in print mode — they disable ISIG, so a ctrl+c is swallowed for your whole process group while the child runs. To stay interruptible, aclio-go runs the child **detached in its own session** (unix) / process group (windows), then installs a guard for the child's lifetime. On SIGINT/SIGTERM the guard reaps the child's whole tree — a polite SIGINT first, then SIGKILL after a short grace window (a second ctrl+c skips the wait) — and the in-flight `Run` call **returns an error wrapping `ErrInterrupted`** (exported as `aclio.ErrInterrupted` / `claude.ErrInterrupted` / `codex.ErrInterrupted` — all the same value). It does *not* exit your process: deferred cleanup runs, and one interrupted call is a recoverable error.
+
+A Claude session's `Send` handles ctrl+c differently: the first signal asks the CLI to stop just that turn, and `Send` returns an error wrapping `ErrInterrupted` once it has, with the session still usable. If the CLI hasn't stopped within the grace window, or a second ctrl+c arrives, the CLI is killed and the session ends.
 
 ```go
 _, err := claude.Run(dir, opts)
